@@ -12,12 +12,14 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QStatusBar,
+    QSystemTrayIcon,
 )
 
 from ..app import AppController
 from ..core.config import discover_sources
 from .dashboard import Dashboard
 from .styles import QSS
+from .tray import TrayIcon
 
 
 class MainWindow(QMainWindow):
@@ -36,10 +38,26 @@ class MainWindow(QMainWindow):
         self._build_status_bar()
         controller.sources_changed.connect(self._on_sources_changed)
 
+        # System tray (only if the platform supports it).
+        self._tray = None
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            self._tray = TrayIcon(controller, self)
+            self._tray.show_window_requested.connect(self._show_from_tray)
+            self._tray.show()
+
     # ------------------------------------------------------------- UI build
     def _build_menu(self) -> None:
         bar = self.menuBar()
         file_menu = bar.addMenu("&File")
+        view_menu = bar.addMenu("&View")
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            hide_action = QAction("Hide to tray", self)
+            hide_action.setShortcut(QKeySequence("Ctrl+H"))
+            hide_action.triggered.connect(self.hide)
+            view_menu.addAction(hide_action)
+            show_tray = QAction("Show tray icon", self)
+            show_tray.triggered.connect(self._show_from_tray)
+            view_menu.addAction(show_tray)
 
         refresh_action = QAction("Refresh now", self)
         refresh_action.setShortcut(QKeySequence("F5"))
@@ -68,6 +86,27 @@ class MainWindow(QMainWindow):
         bar.addWidget(self._source_label, 1)
         self._stats_label = QLabel("0 records")
         bar.addPermanentWidget(self._stats_label)
+
+    # --------------------------------------------------------------- close
+    def closeEvent(self, event) -> None:
+        """If a tray is available, hide instead of quitting on close."""
+        if self._tray is not None and self._tray.isVisible():
+            event.ignore()
+            self.hide()
+            self._tray.showMessage(
+                "TokenPulse",
+                "Still running in the system tray. Right-click the icon to quit.",
+                QSystemTrayIcon.Information,
+                3000,
+            )
+            return
+        super().closeEvent(event)
+
+    @Slot()
+    def _show_from_tray(self) -> None:
+        self.show()
+        self.raise_()
+        self.activateWindow()
 
     # --------------------------------------------------------------- signals
     @Slot(list)
@@ -103,7 +142,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self,
             "TokenPulse",
-            "TokenPulse v0.1.0\n\n"
+            "TokenPulse v0.2.0\n\n"
             "Real-time, local-first token-usage visualizer for Codex, Claude Code, and other AI coding CLIs.\n\n"
             "All data stays on this machine.",
         )

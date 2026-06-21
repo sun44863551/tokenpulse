@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 from ..app import AppController
 from ..core.models import RateLimitSnapshot, SourceStatus
 from ..storage.db import Totals
-from .charts import TimeSeriesChart, TokenBreakdownBar
+from .charts import TimeSeriesChart, TokenBreakdownBar, ModelPieChart, DailyHeatmap
 
 
 def _humanize(n: int) -> str:
@@ -115,6 +115,8 @@ class Dashboard(QWidget):
         # Charts
         self.chart = TimeSeriesChart()
         self.breakdown = TokenBreakdownBar()
+        self.pie = ModelPieChart()
+        self.heatmap = DailyHeatmap()
 
         # Recent activity
         self.recent = QListWidget()
@@ -197,6 +199,30 @@ class Dashboard(QWidget):
         outer.addLayout(main_row, stretch=3)
 
         # Breakdown + recent.
+        # Pie chart + heatmap row.
+        viz_row = QHBoxLayout()
+        viz_row.setSpacing(14)
+        pie_card = QFrame()
+        pie_card.setObjectName("card")
+        pie_layout = QVBoxLayout(pie_card)
+        pie_layout.setContentsMargins(14, 12, 14, 12)
+        pie_title = QLabel("Tokens by model")
+        pie_title.setObjectName("cardTitle")
+        pie_layout.addWidget(pie_title)
+        pie_layout.addWidget(self.pie)
+        viz_row.addWidget(pie_card, stretch=2)
+
+        heatmap_card = QFrame()
+        heatmap_card.setObjectName("card")
+        heatmap_layout = QVBoxLayout(heatmap_card)
+        heatmap_layout.setContentsMargins(14, 12, 14, 12)
+        heatmap_title = QLabel("Activity heatmap (7d x 24h)")
+        heatmap_title.setObjectName("cardTitle")
+        heatmap_layout.addWidget(heatmap_title)
+        heatmap_layout.addWidget(self.heatmap)
+        viz_row.addWidget(heatmap_card, stretch=3)
+        outer.addLayout(viz_row, stretch=2)
+
         bottom_row = QHBoxLayout()
         bottom_row.setSpacing(14)
         breakdown_card = QFrame()
@@ -394,6 +420,16 @@ class Dashboard(QWidget):
             for cat in breakdown:
                 breakdown[cat][tool] = cats.get(cat, 0)
         self.breakdown.set_data(breakdown)
+
+        # Pie chart: totals by model (sum the total category).
+        model_totals = {m: cats.get('total', 0) for m, cats in self._controller.storage().totals_by_model().items()}
+        self.pie.set_data(model_totals)
+
+        # Heatmap: token volume by weekday x hour over the last 7 days.
+        from datetime import datetime, timedelta
+        since_ms = int((datetime.now() - timedelta(days=7)).timestamp() * 1000)
+        ts_values = [(ts, total) for ts, _tool, total in self._controller.storage().ts_buckets(since_ms)]
+        self.heatmap.set_data(ts_values)
 
     def _update_plan_pill(self) -> None:
         if not self._plan_type:

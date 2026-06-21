@@ -8,7 +8,7 @@ to disk, parses them into token / cost / interaction aggregates, and
 shows everything in a native desktop dashboard that updates live as you
 work.
 
-![TokenPulse screenshot](docs/screenshot.png)
+![TokenPulse dashboard](docs/dashboard-v2.png)
 
 ## Highlights
 
@@ -24,6 +24,27 @@ work.
   countdowns.
 - **Multi-tool** &mdash; Codex and Claude Code today, easy to extend with
   a new parser.
+
+## What's new in v0.2.0
+
+- **System tray icon** with hover tooltip, click-to-popup, and right-click
+  menu (Open / Refresh / Quit).  The tray icon is drawn programmatically
+  in code, so we ship no PNGs.
+- **Compact mini popup** (`340x220`) showing the headline number, the
+  5-hour and weekly progress bars, and a quick cost / turns line.
+  Click the tray icon to toggle it.
+- **Close-to-tray** by default: clicking the window's `X` hides the
+  window and leaves a notification; right-click the tray icon to quit.
+- **Model donut chart** built on a custom `QGraphicsView` (no
+  QtCharts dependency) and aggregated from `totals_by_model()`.
+- **Daily activity heatmap** &mdash; a 7-day by 24-hour grid that
+  shows which hours of the week see the most token activity.
+- **Quota desktop notifications** &mdash; the 5-hour bar triggers a
+  tray notification at 70% and 90% (with a per-threshold cooldown so
+  you are not spammed).
+- **Two new CLI flags**:
+  - `--tray-only` &mdash; start hidden in the system tray.
+  - `--minimized` &mdash; start with the main window minimized.
 
 ## Quick start
 
@@ -53,6 +74,28 @@ python -m tokenpulse --no-window
 
 Runs the pipeline for a couple of seconds and exits.  Useful for
 verifying that parsing and storage work in a headless environment.
+
+## Screenshots
+
+### Main dashboard
+
+![Main dashboard](docs/dashboard-v2.png)
+
+### Tokens by model (donut)
+
+![Model donut chart](docs/pie-chart.png)
+
+### Daily activity heatmap (7 x 24)
+
+![Daily activity heatmap](docs/heatmap.png)
+
+### System tray icon
+
+![Tray icon](docs/tray-icon.png)
+
+### Mini popup (click the tray)
+
+![Mini popup](docs/tray-popup.png)
 
 ## What gets read
 
@@ -121,6 +164,14 @@ Pricing data lives in `tokenpulse/core/pricing.py`.  Values are USD per
 reads discounted as published by each vendor.  Unknown models return
 `0` so the UI still works &mdash; the cost card will simply show `$0`.
 
+## Changelog
+
+- **v0.2.0** &mdash; system tray, mini popup, pie chart, heatmap,
+  quota desktop notifications, close-to-tray, `--tray-only`,
+  `--minimized`.
+- **v0.1.0** &mdash; initial dashboard, line chart, stacked bar,
+  per-tool cards, 5h / weekly quota gauges.
+
 ## Extending
 
 To add support for a new tool:
@@ -171,7 +222,9 @@ The differences:
 
 ```bash
 python -m pip install -r requirements.txt
-python -m tokenpulse --no-window  # smoke test
+python -m tokenpulse --no-window  # smoke test (no GUI)
+python -m tokenpulse --tray-only    # start hidden in the tray
+python -m tests.test_parsers       # parser unit tests
 python run.py                     # full GUI
 ```
 

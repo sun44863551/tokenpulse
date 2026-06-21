@@ -228,6 +228,53 @@ class Storage:
                 "cost", "records", "interactions"
             )}) for k, v in self._cache_by_tool.items()}
 
+
+    def totals_by_model(self) -> dict:
+        """Return {model: {category: tokens}} aggregates across all tools."""
+        with self._lock:
+            cur = self._conn.execute(
+                """
+                SELECT model,
+                       SUM(input_tokens) AS inp,
+                       SUM(output_tokens) AS out,
+                       SUM(cache_read_tokens) AS cr,
+                       SUM(cache_write_tokens) AS cw,
+                       SUM(thinking_tokens) AS th,
+                       SUM(input_tokens + output_tokens + cache_read_tokens
+                           + cache_write_tokens + thinking_tokens) AS total
+                FROM usage_records
+                GROUP BY model
+                ORDER BY total DESC
+                """
+            )
+            out: dict = {}
+            for row in cur.fetchall():
+                out[row["model"]] = {
+                    "input": int(row["inp"] or 0),
+                    "output": int(row["out"] or 0),
+                    "cache_read": int(row["cr"] or 0),
+                    "cache_write": int(row["cw"] or 0),
+                    "thinking": int(row["th"] or 0),
+                    "total": int(row["total"] or 0),
+                }
+            return out
+
+    def ts_buckets(self, since_ms: int = 0) -> list:
+        """Return (ts_ms, tool, total_tokens) tuples for all records since since_ms."""
+        with self._lock:
+            cur = self._conn.execute(
+                """
+                SELECT ts, tool,
+                       input_tokens + output_tokens + cache_read_tokens
+                       + cache_write_tokens + thinking_tokens AS total
+                FROM usage_records
+                WHERE ts >= ?
+                ORDER BY ts ASC
+                """,
+                (since_ms,),
+            )
+            return [(int(r["ts"]), r["tool"], int(r["total"])) for r in cur.fetchall()]
+
     def hourly(self, since_ms: int) -> list[tuple[int, Totals]]:
         """Return hour-bucketed totals for the last `since_ms` milliseconds."""
         with self._lock:

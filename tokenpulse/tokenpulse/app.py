@@ -41,6 +41,9 @@ class AppController(QObject):
         self._refresh.setInterval(1000)
         self._refresh.timeout.connect(self._emit_stats)
         self._refresh.start()
+        # Quota thresholds: (percent, cooldown seconds).
+        self._quota_alerts = {70: 600, 90: 300}
+        self._last_alert_ts: dict = {}
 
     # --------------------------------------------------------------- public
     def set_sources(self, sources: list[SourceConfig]) -> None:
@@ -132,12 +135,43 @@ class AppController(QObject):
             )
         self.sources_changed.emit(statuses)
 
+    def _maybe_notify_quota(self, rate) -> None:
+        """Show a desktop notification when the 5h quota crosses a threshold."""
+        if rate is None or rate.primary_used_percent is None:
+            return
+        import time
+        pct = rate.primary_used_percent
+        tool = rate.tool
+        for threshold, cooldown in sorted(self._quota_alerts.items()):
+            if pct < threshold:
+                continue
+            key = (tool, threshold)
+            last = self._last_alert_ts.get(key, 0)
+            if time.time() - last < cooldown:
+                continue
+            self._last_alert_ts[key] = time.time()
+            self._show_notification(
+                "TokenPulse — %s 5h" % tool,
+                "%.0f%% of the 5-hour quota used." % pct,
+            )
+
+    def _show_notification(self, title: str, body: str) -> None:
+        """Best-effort OS notification.  Falls back to a silent no-op."""
+        try:
+            from PySide6.QtWidgets import QSystemTrayIcon
+            tray = QSystemTrayIcon.instance()
+            if tray is not None:
+                tray.showMessage(title, body, QSystemTrayIcon.Warning, 5000)
+        except Exception:
+            pass
+
     @Slot()
     def _emit_stats(self) -> None:
         totals = self._storage.totals()
         by_tool = self._storage.totals_by_tool()
         rate = self._storage.latest_rate_limit()
         self.stats_updated.emit(totals, by_tool, rate)
+        self._maybe_notify_quota(rate)
 
 
 def build_default_controller() -> AppController:

@@ -20,6 +20,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Run without showing the GUI (for headless smoke tests).",
     )
+    parser.add_argument(
+        "--tray-only",
+        action="store_true",
+        help="Start hidden in the system tray; do not show the main window.",
+    )
+    parser.add_argument(
+        "--minimized",
+        action="store_true",
+        help="Start with the main window minimized to the taskbar.",
+    )
     args = parser.parse_args(argv)
 
     # Allow high-DPI rendering on Windows.
@@ -40,7 +50,13 @@ def main(argv: list[str] | None = None) -> int:
         return app.exec()
 
     window = MainWindow(controller)
-    window.show()
+    if args.tray_only:
+        window.hide()
+    else:
+        if args.minimized:
+            window.showMinimized()
+        else:
+            window.show()
     return app.exec()
 
 
