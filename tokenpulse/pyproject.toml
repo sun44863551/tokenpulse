@@ -1,0 +1,23 @@
+﻿[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tokenpulse"
+version = "0.1.0"
+description = "Real-time token usage visualizer for Codex, Claude Code, and other AI coding CLIs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "TokenPulse Contributors" }]
+dependencies = [
+    "PySide6>=6.7",
+    "pyqtgraph>=0.13",
+    "watchdog>=4.0",
+]
+
+[project.scripts]
+tokenpulse = "tokenpulse.__main__:main"
+
+[tool.setuptools]
+packages = ["tokenpulse", "tokenpulse.core", "tokenpulse.parsers", "tokenpulse.storage", "tokenpulse.watcher", "tokenpulse.ui"]
