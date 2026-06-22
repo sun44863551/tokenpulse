@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from ..app import AppController
 from ..core.models import SourceStatus
 from ..storage.db import Totals
+from .tips_dialog import TipsDialog
 from .charts import TimeSeriesChart, ModelPieChart
 
 
@@ -235,6 +236,21 @@ class Dashboard(QWidget):
         self.tips_summary = QLabel("加载中â¦")
         self.tips_summary.setObjectName("cardSubValue")
         tips_title_row.addWidget(self.tips_summary)
+        tips_title_row.addSpacing(10)
+        self._one_click_btn = QPushButton("一键优化  →")
+        self._one_click_btn.setObjectName("primaryButton")
+        self._one_click_btn.setCursor(Qt.PointingHandCursor)
+        self._one_click_btn.setToolTip("运行优化分析并打开完整建议列表")
+        self._one_click_btn.setStyleSheet(
+            "QPushButton#primaryButton {"
+            "  background-color: #1f6feb; color: white; font-weight: 600;"
+            "  border: none; border-radius: 6px; padding: 5px 12px; font-size: 12px;"
+            "}"
+            "QPushButton#primaryButton:hover { background-color: #388bfd; }"
+            "QPushButton#primaryButton:pressed { background-color: #1158c7; }"
+        )
+        self._one_click_btn.clicked.connect(self._on_one_click_optimize)
+        tips_title_row.addWidget(self._one_click_btn)
         tips_layout.addLayout(tips_title_row)
         self.tips_list = QVBoxLayout()
         self.tips_list.setContentsMargins(0, 0, 0, 0)
@@ -492,6 +508,21 @@ class Dashboard(QWidget):
             saving_label.setFixedWidth(110)
             box.addWidget(saving_label, 0, Qt.AlignTop)
         return row
+
+    @Slot()
+    def _on_one_click_optimize(self) -> None:
+        "一键优化：重新运行分析并打开完整优化助手对话框。"
+        from ..core.optimizer import run as run_optimizer
+        stats = self._controller.storage().usage_stats()
+        tips = run_optimizer(stats)
+        # Refresh the inline card to keep it in sync with the dialog.
+        self._render_tips()
+        # Resolve MainWindow callbacks (for export/copy) if present.
+        win = self.window()
+        on_export = getattr(win, "_export_optimization_report", None)
+        on_copy = getattr(win, "_copy_optimization_summary", None)
+        dlg = TipsDialog(tips, on_export=on_export, on_copy=on_copy, parent=win)
+        dlg.exec()
 
     def _update_plan_pill(self) -> None:
         if not self._plan_type:
