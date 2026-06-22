@@ -93,6 +93,7 @@ def take_screenshots(out_dir: Path) -> list[Path]:
     from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
     app = _ensure_qt_app()
+    paths = []
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # ---- 1. 主窗口 -----------------------------------------------------------
@@ -129,7 +130,17 @@ def take_screenshots(out_dir: Path) -> list[Path]:
     holder.grab().save(str(p2), "PNG")
     holder.close()
 
-    # ---- 3. 一键优化对话框 ---------------------------------------------------
+    # ---- 3. 紧凑概览窗口（参考设计的暖色风格）---------
+    from tokenpulse.ui.warm_dashboard import OverviewWindow
+    overview = OverviewWindow(ctl.storage())
+    overview.show()
+    _pump(app, 0.6)
+    p_overview = out_dir / "preview_overview_warm.png"
+    overview.grab().save(str(p_overview), "PNG")
+    overview.close()
+    paths.append(p_overview)
+
+    # ---- 4. 一键优化对话框 -----------------------------------------------------
     stats = ctl.storage().usage_stats()
     tips = run_optimizer(stats)
     dlg = TipsDialog(tips, parent=None)
@@ -140,7 +151,7 @@ def take_screenshots(out_dir: Path) -> list[Path]:
     dlg.grab().save(str(p3), "PNG")
     dlg.close()
 
-    return [p1, p2, p3]
+    return paths
 
 
 def run_gui() -> int:

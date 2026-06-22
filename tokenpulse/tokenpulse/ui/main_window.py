@@ -21,6 +21,7 @@ from ..core.config import discover_sources
 from .dashboard import Dashboard
 from .styles import QSS
 from .tray import TrayIcon
+from .warm_dashboard import OverviewWindow
 
 
 class MainWindow(QMainWindow):
@@ -59,6 +60,12 @@ class MainWindow(QMainWindow):
             show_tray = QAction("显示托盘图标", self)
             show_tray.triggered.connect(self._show_from_tray)
             view_menu.addAction(show_tray)
+            view_menu.addSeparator()
+            self._overview_action = QAction("紧凑概览", self)
+            self._overview_action.setShortcut(QKeySequence("Ctrl+Shift+O"))
+            self._overview_action.setStatusTip("打开暖色紧凑型概览窗口")
+            self._overview_action.triggered.connect(self._show_overview)
+            view_menu.addAction(self._overview_action)
 
         refresh_action = QAction("立即刷新", self)
         refresh_action.setShortcut(QKeySequence("F5"))
@@ -122,6 +129,15 @@ class MainWindow(QMainWindow):
         self.show()
         self.raise_()
         self.activateWindow()
+
+    def _show_overview(self) -> None:
+        """打开紧凑概览窗口。如果已开过则置前。"""
+        if getattr(self, "_overview_win", None) is None or not self._overview_win.isVisible():
+            self._overview_win = OverviewWindow(self._controller.storage(), parent=self)
+            self._overview_win.destroyed.connect(lambda: setattr(self, "_overview_win", None))
+        self._overview_win.show()
+        self._overview_win.raise_()
+        self._overview_win.activateWindow()
 
     # --------------------------------------------------------------- signals
     @Slot(list)
