@@ -114,11 +114,14 @@ class Dashboard(QWidget):
 
         # 图表
         self.chart = TimeSeriesChart()
+        self.chart.setMinimumHeight(160)
         self.pie = ModelPieChart()
+        self.pie.setMinimumHeight(180)
+        self.pie.setSizePolicy(__import__("PySide6.QtWidgets", fromlist=["QSizePolicy"]).QSizePolicy.Preferred, __import__("PySide6.QtWidgets", fromlist=["QSizePolicy"]).QSizePolicy.Expanding)
 
         # 最近活动
         self.recent = QListWidget()
-        self.recent.setMinimumHeight(120)
+        self.recent.setMinimumHeight(140)
 
         self._build_layout()
 
@@ -190,6 +193,7 @@ class Dashboard(QWidget):
         pie_title.setObjectName("cardTitle")
         pie_layout.addWidget(pie_title)
         pie_layout.addWidget(self.pie)
+        pie_card.setMinimumHeight(220)
         split_row.addWidget(pie_card, stretch=2)
 
         tools_card = QFrame()
@@ -200,9 +204,10 @@ class Dashboard(QWidget):
         tools_title.setObjectName("cardTitle")
         tools_layout.addWidget(tools_title)
         tools_layout.addWidget(self.tool_scroll)
+        tools_card.setMinimumHeight(220)
         split_row.addWidget(tools_card, stretch=3)
 
-        outer.addLayout(split_row, stretch=2)
+        outer.addLayout(split_row, stretch=4)
 
         # 最近活动（全宽）
         recent_card = QFrame()

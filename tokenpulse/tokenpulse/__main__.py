@@ -41,6 +41,16 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("TokenPulse")
     app.setOrganizationName("TokenPulse")
 
+    # Use a font that supports Chinese characters on the host platform.
+    from PySide6.QtGui import QFont, QFontDatabase
+    fams = set(QFontDatabase.families())
+    for cand in ("Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC",
+                 "PingFang SC", "Source Han Sans SC", "SimHei", "SimSun"):
+        if cand in fams:
+            f = QFont(cand, 10)
+            app.setFont(f)
+            break
+
     controller = build_default_controller()
 
     if args.no_window:

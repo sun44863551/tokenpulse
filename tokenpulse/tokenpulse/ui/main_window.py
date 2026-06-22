@@ -26,7 +26,7 @@ class MainWindow(QMainWindow):
     def __init__(self, controller: AppController, parent: Optional[QMainWindow] = None):
         super().__init__(parent)
         self._controller = controller
-        self.setWindowTitle("TokenPulse 代理量监控")
+        self.setWindowTitle("TokenPulse")
         self.resize(1280, 820)
         self.setMinimumSize(960, 640)
         self.setStyleSheet(QSS)

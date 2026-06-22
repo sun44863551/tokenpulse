@@ -12,6 +12,22 @@ from PySide6.QtGui import QColor, QFont, QPainter
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 
+def _pick_cn_font() -> str:
+    """Pick a font family that renders Chinese characters on this platform."""
+    from PySide6.QtWidgets import QApplication
+    from PySide6.QtGui import QFontDatabase
+    app = QApplication.instance()
+    if app is None:
+        return "Microsoft YaHei"
+    fams = set(QFontDatabase.families())
+    for cand in ("Microsoft YaHei", "Microsoft YaHei UI", "Noto Sans SC",
+                 "PingFang SC", "Source Han Sans SC", "SimHei", "SimSun"):
+        if cand in fams:
+            return cand
+    return "Microsoft YaHei"
+
+
+_CN_FONT = _pick_cn_font()
 # pyqtgraph uses Qt's rendering pipeline.  We force a dark, high-DPI
 # style that matches the rest of the app.
 pg.setConfigOption("background", "#0d1117")
@@ -29,10 +45,20 @@ class TimeSeriesChart(QWidget):
 
         self.plot = pg.PlotWidget(title="")
         self.plot.showGrid(x=True, y=True, alpha=0.15)
-        self.plot.setLabel("left", "Token数")
-        self.plot.setLabel("bottom", "时间")
+        self.plot.setLabel("left", "Token数", **{"font-family": _CN_FONT, "font-size": "11px"})
+
+        self.plot.setLabel("bottom", "时间", **{"font-family": _CN_FONT, "font-size": "11px"})
+
         self.plot.getPlotItem().setMenuEnabled(False)
         self.plot.setMouseEnabled(x=True, y=False)
+        # Force Chinese-capable font on tick labels.
+        tick_font = QFont(_CN_FONT, 9)
+        for axis_name in ("left", "bottom", "right", "top"):
+            try:
+                self.plot.getAxis(axis_name).label.setFont(tick_font)
+                self.plot.getAxis(axis_name).setStyle(tickFont=tick_font)
+            except Exception:
+                pass
         layout.addWidget(self.plot)
 
         self._curves: dict[str, pg.PlotDataItem] = {}
@@ -193,8 +219,38 @@ class ModelPieChart(QWidget):
         layout.addWidget(self.view, stretch=1)
         self._items: list = []
         self._labels: list[pg.TextItem] = []
+        self._data: dict = {}
+        self._pending = False
+        # Re-render whenever the widget is resized so the donut stays centred.
+        self.view.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        from PySide6.QtCore import QEvent
+        if obj is self.view and event.type() in (QEvent.Resize, QEvent.Show):
+            self._schedule_render()
+        return super().eventFilter(obj, event)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._schedule_render()
+
+    def _schedule_render(self):
+        if self._pending or not self._data:
+            return
+        self._pending = True
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self._do_render)
+
+    def _do_render(self):
+        self._pending = False
+        self._render(self._data)
 
     def set_data(self, model_totals: dict) -> None:
+        """Store the latest data; rendering happens once the view is laid out."""
+        self._data = dict(model_totals)
+        self._schedule_render()
+
+    def _render(self, model_totals: dict) -> None:
         # Reset scene.
         for it in self._items:
             self.view.removeItem(it)
@@ -210,18 +266,29 @@ class ModelPieChart(QWidget):
         total = sum(v for _, v in items)
         if total == 0:
             return
-        threshold = total * 0.02
+        # Combine slices that are < 5%% into "Other" so the chart stays readable.
+        threshold = total * 0.05
         main = [(k, v) for k, v in items if v >= threshold]
         other = sum(v for k, v in items if v < threshold)
         if other > 0:
-            main.append(("Other", other))
+            main.append(("其他", other))
 
         import math
-        w = max(self.view.width(), 320)
-        h = max(self.view.height(), 220)
-        cx, cy = w / 2, h / 2 + 6
-        radius = min(w, h) * 0.36
+        # Use the widget's own size, not the viewport rect, so the donut
+        # is always centred inside the card regardless of any view transforms.
+        w = max(self.width(), 240)
+        h = max(self.height(), 200)
+        cx, cy = w / 2, h / 2
+        # Use a smaller radius so the chart fits comfortably in narrow cards.
+        # Leave 18% of the height for labels and the centre text.
+        radius = min(w * 0.40, h * 0.36)
+        if radius < 36.0:
+            radius = 36.0
         inner = radius * 0.55
+
+        # Chinese-capable font for slice labels.
+        slice_font = QFont(_CN_FONT, 9)
+        slice_font.setBold(False)
 
         start_angle = -math.pi / 2  # 12 o'clock
         for label, value in main:
@@ -231,11 +298,14 @@ class ModelPieChart(QWidget):
             self.view.addItem(path_item)
             self._items.append(path_item)
             mid = start_angle + sweep / 2
-            lx = cx + (radius * 0.78) * math.cos(mid)
-            ly = cy + (radius * 0.78) * math.sin(mid)
+            lx = cx + (radius * 1.05) * math.cos(mid)
+            ly = cy + (radius * 1.05) * math.sin(mid)
             pct = value / total * 100
-            text = "%s  %.0f%%" % (label, pct)
+            # Trim very long labels so the chart stays compact.
+            short = label if len(label) <= 14 else label[:12] + "..."
+            text = "%s\n%.0f%%" % (short, pct)
             t = pg.TextItem(text=text, color="#e6edf3", anchor=(0.5, 0.5))
+            t.setFont(slice_font)
             t.setPos(lx, ly)
             self.view.addItem(t)
             self._labels.append(t)
@@ -243,15 +313,20 @@ class ModelPieChart(QWidget):
 
         # Center label: total.
         total_text = pg.TextItem(
-            text="%s\ntokens" % _humanize(total),
+            text=_humanize(total),
             color="#f0f6fc", anchor=(0.5, 0.5),
         )
-        f = QFont("", 11)
+        f = QFont(_CN_FONT, 11)
         f.setBold(True)
         total_text.setFont(f)
         total_text.setPos(cx, cy - 6)
         self.view.addItem(total_text)
         self._labels.append(total_text)
+
+        # Match the scene rect to the widget size so the donut is fully visible
+        # without any view scaling.  1:1 mapping between scene and viewport.
+        self.view.setSceneRect(0, 0, w, h)
+        self.view.resetTransform()
 
 
 def _make_donut_slice(cx, cy, r_outer, r_inner, a0, a1, color):

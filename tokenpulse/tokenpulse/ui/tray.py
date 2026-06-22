@@ -205,14 +205,14 @@ def _eta(ts_ms) -> str:
     import time
     delta_s = (ts_ms / 1000.0) - time.time()
     if delta_s <= 0:
-        return "now"
+        return "即将"  # 即将 (“about to”)
     if delta_s < 60:
-        return f"{int(delta_s)}s"
+        return f"{int(delta_s)} 秒"
     if delta_s < 3600:
-        return f"{int(delta_s // 60)}m"
+        return f"{int(delta_s // 60)} 分钟"
     if delta_s < 86400:
-        return f"{delta_s / 3600:.1f}h"
-    return f"{delta_s / 86400:.1f}d"
+        return f"{delta_s / 3600:.1f} 小时"
+    return f"{delta_s / 86400:.1f} 天"
 
 
 # ---------------------------------------------------------------- tray
