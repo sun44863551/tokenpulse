@@ -300,6 +300,87 @@ class Storage:
             )
             return [self._row_to_record(r) for r in cur.fetchall()]
 
+    def usage_stats(self):
+        """Aggregate stats used by the optimizer.
+
+        Returns a :class:`tokenpulse.core.optimizer.UsageStats` snapshot
+        computed from the underlying SQL; safe to call from any thread.
+        """
+        from ..core.optimizer import UsageStats
+        with self._lock:
+            cur = self._conn.execute(
+                """
+                SELECT model,
+                       SUM(input_tokens) AS inp,
+                       SUM(output_tokens) AS outp,
+                       SUM(cache_read_tokens) AS cr,
+                       SUM(cache_write_tokens) AS cw,
+                       SUM(thinking_tokens) AS th,
+                       SUM(cost) AS cost,
+                       MAX(input_tokens + output_tokens + cache_read_tokens
+                           + cache_write_tokens + thinking_tokens) AS biggest,
+                       COUNT(*) AS n
+                FROM usage_records
+                GROUP BY model
+                """
+            )
+            rows = cur.fetchall()
+            total_inp = total_outp = total_cr = total_cw = total_th = 0
+            total_cost = 0.0
+            records = 0
+            by_model = {}
+            max_req = 0
+            max_model = ""
+            total_input_for_avg = 0
+            for r in rows:
+                inp = int(r["inp"] or 0)
+                outp = int(r["outp"] or 0)
+                cr = int(r["cr"] or 0)
+                cw = int(r["cw"] or 0)
+                th = int(r["th"] or 0)
+                cost = float(r["cost"] or 0.0)
+                n = int(r["n"] or 0)
+                biggest = int(r["biggest"] or 0)
+                total_inp += inp
+                total_outp += outp
+                total_cr += cr
+                total_cw += cw
+                total_th += th
+                total_cost += cost
+                records += n
+                total_input_for_avg += inp
+                by_model[r["model"]] = {
+                    "input": inp, "output": outp,
+                    "cache_read": cr, "cache_write": cw,
+                    "thinking": th, "cost": cost, "records": n,
+                }
+                if biggest > max_req:
+                    max_req = biggest
+                    max_model = r["model"]
+
+            total_billed = total_inp + total_outp + total_cw + total_th
+            avg_input = total_input_for_avg / max(1, records)
+            cache_hit_rate = (total_cr / max(1, total_inp + total_cr)) if (total_inp + total_cr) else 0.0
+            cur_int = self._conn.execute('SELECT COUNT(*) AS n FROM interactions')
+            interaction_count = int(cur_int.fetchone()['n'] or 0)
+            return UsageStats(
+                records=records,
+                total_input=total_inp,
+                total_output=total_outp,
+                total_cache_read=total_cr,
+                total_cache_write=total_cw,
+                total_thinking=total_th,
+                total_billed=total_billed,
+                total_cost=total_cost,
+                by_model=by_model,
+                max_request_tokens=max_req,
+                max_request_model=max_model,
+                avg_request_tokens=(total_billed + total_cr) / max(1, records),
+                avg_input_tokens=avg_input,
+                cache_hit_rate=cache_hit_rate,
+                interaction_count=interaction_count,
+            )
+
     def record_count(self) -> int:
         with self._lock:
             cur = self._conn.execute("SELECT COUNT(*) AS n FROM usage_records")

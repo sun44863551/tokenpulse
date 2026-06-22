@@ -27,6 +27,18 @@ from .charts import TimeSeriesChart, ModelPieChart
 
 
 # ---------------------------------------------------------------- helpers
+def _html_escape(s) -> str:
+    """Tiny HTML escape for rich-text labels."""
+    if s is None:
+        return ""
+    return (
+        str(s)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
 def _humanize(n) -> str:
     """将大数缩写为 K/M/B/T。"""
     n = float(n)
@@ -114,14 +126,14 @@ class Dashboard(QWidget):
 
         # 图表
         self.chart = TimeSeriesChart()
-        self.chart.setMinimumHeight(160)
+        self.chart.setMinimumHeight(100)
         self.pie = ModelPieChart()
         self.pie.setMinimumHeight(180)
         self.pie.setSizePolicy(__import__("PySide6.QtWidgets", fromlist=["QSizePolicy"]).QSizePolicy.Preferred, __import__("PySide6.QtWidgets", fromlist=["QSizePolicy"]).QSizePolicy.Expanding)
 
         # 最近活动
         self.recent = QListWidget()
-        self.recent.setMinimumHeight(140)
+        self.recent.setMinimumHeight(70)
 
         self._build_layout()
 
@@ -137,8 +149,8 @@ class Dashboard(QWidget):
     # ---------------------------------------------------------------- layout
     def _build_layout(self) -> None:
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(18, 18, 18, 18)
-        outer.setSpacing(14)
+        outer.setContentsMargins(14, 12, 14, 12)
+        outer.setSpacing(8)
 
         # 顶部标题行
         header = QHBoxLayout()
@@ -179,7 +191,7 @@ class Dashboard(QWidget):
         chart_title.setObjectName("cardTitle")
         chart_layout.addWidget(chart_title)
         chart_layout.addWidget(self.chart)
-        outer.addWidget(chart_card, stretch=3)
+        outer.addWidget(chart_card, stretch=2)
 
         # 二列：模型饰饰图 + 工具列表
         split_row = QHBoxLayout()
@@ -193,7 +205,7 @@ class Dashboard(QWidget):
         pie_title.setObjectName("cardTitle")
         pie_layout.addWidget(pie_title)
         pie_layout.addWidget(self.pie)
-        pie_card.setMinimumHeight(220)
+        pie_card.setMinimumHeight(160)
         split_row.addWidget(pie_card, stretch=2)
 
         tools_card = QFrame()
@@ -204,10 +216,32 @@ class Dashboard(QWidget):
         tools_title.setObjectName("cardTitle")
         tools_layout.addWidget(tools_title)
         tools_layout.addWidget(self.tool_scroll)
-        tools_card.setMinimumHeight(220)
+        tools_card.setMinimumHeight(160)
         split_row.addWidget(tools_card, stretch=3)
 
-        outer.addLayout(split_row, stretch=4)
+        outer.addLayout(split_row, stretch=3)
+
+        # 优化建议（全宽）
+        tips_card = QFrame()
+        tips_card.setObjectName("card")
+        tips_layout = QVBoxLayout(tips_card)
+        tips_layout.setContentsMargins(14, 12, 14, 12)
+        tips_layout.setSpacing(8)
+        tips_title_row = QHBoxLayout()
+        tips_title = QLabel("优化建议")
+        tips_title.setObjectName("cardTitle")
+        tips_title_row.addWidget(tips_title)
+        tips_title_row.addStretch(1)
+        self.tips_summary = QLabel("加载中â¦")
+        self.tips_summary.setObjectName("cardSubValue")
+        tips_title_row.addWidget(self.tips_summary)
+        tips_layout.addLayout(tips_title_row)
+        self.tips_list = QVBoxLayout()
+        self.tips_list.setContentsMargins(0, 0, 0, 0)
+        self.tips_list.setSpacing(4)
+        tips_layout.addLayout(self.tips_list)
+        self._tip_widgets = []
+        outer.addWidget(tips_card, stretch=2)
 
         # 最近活动（全宽）
         recent_card = QFrame()
@@ -243,6 +277,7 @@ class Dashboard(QWidget):
     @Slot(object, dict, object)
     def _on_stats_updated(self, totals: Totals, by_tool: dict, rate) -> None:
         self._render_totals(totals, by_tool, rate)
+        self._render_tips()
 
     @Slot(bool, str)
     def _on_plan_changed(self, is_interaction_plan: bool, plan_type: str) -> None:
@@ -376,6 +411,87 @@ class Dashboard(QWidget):
         # 模型饰饰图
         model_totals = {m: cats.get("total", 0) for m, cats in self._controller.storage().totals_by_model().items()}
         self.pie.set_data(model_totals)
+
+    def _render_tips(self) -> None:
+        from ..core.optimizer import run as run_optimizer, summarise
+        stats = self._controller.storage().usage_stats()
+        tips = run_optimizer(stats)
+        # Clear old widgets.
+        for w in self._tip_widgets:
+            w.setParent(None)
+            w.deleteLater()
+        self._tip_widgets.clear()
+        # Remove empty layout items.
+        while self.tips_list.count():
+            item = self.tips_list.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        if not tips:
+            self.tips_summary.setText("优化状态：良好")
+            row = QFrame()
+            row.setStyleSheet(
+                "background-color: #0d4429; border-radius: 6px; padding: 8px;"
+            )
+            box = QVBoxLayout(row)
+            box.setContentsMargins(10, 6, 10, 6)
+            t = QLabel("✅ 当前使用模式看起来不错，未检测到明显的优化点。")
+            t.setWordWrap(True)
+            t.setStyleSheet("color: #7ee787; font-size: 12px;")
+            box.addWidget(t)
+            self.tips_list.addWidget(row)
+            self._tip_widgets.append(row)
+            return
+        # Summary text (right side of card title)
+        self.tips_summary.setText(summarise(tips))
+        for tip in tips[:6]:
+            row = self._build_tip_row(tip)
+            self.tips_list.addWidget(row)
+            self._tip_widgets.append(row)
+
+    def _build_tip_row(self, tip) -> QFrame:
+        from PySide6.QtWidgets import QSizePolicy
+        colors = {
+            "high": ("#5a1d1d", "#ff7b72", "⚠"),
+            "medium": ("#5a3d1d", "#d29922", "⚡"),
+            "low": ("#1d3a5a", "#58a6ff", "ℹ"),
+            "info": ("#1d3a5a", "#8b949e", "•"),
+        }
+        bg, fg, icon = colors.get(tip.severity, colors["info"])
+        row = QFrame()
+        row.setStyleSheet(
+            "background-color: %s; border-radius: 6px;" % bg
+        )
+        row.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        row.setMinimumHeight(48)
+        box = QHBoxLayout(row)
+        box.setContentsMargins(10, 4, 10, 4)
+        box.setSpacing(10)
+        badge = QLabel(icon)
+        badge.setStyleSheet("color: %s; font-size: 16px; font-weight: 600; background: transparent;" % fg)
+        badge.setFixedWidth(24)
+        box.addWidget(badge, 0, Qt.AlignTop)
+        # Combine title + first part of detail into a single QLabel.
+        # Use a short, truncated detail so the row stays one line tall.
+        first_line = tip.detail.split("\n", 1)[0]
+        if len(first_line) > 80:
+            first_line = first_line[:78] + "..."
+        text_label = QLabel(tip.title + "  —  " + first_line)
+        text_label.setStyleSheet(
+            "color: #f0f6fc; font-size: 12px; font-weight: 500; background: transparent;"
+        )
+        text_label.setWordWrap(False)
+        text_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        box.addWidget(text_label, 1)
+        if tip.saving:
+            saving_label = QLabel(tip.saving)
+            saving_label.setStyleSheet(
+                "color: #7ee787; font-size: 11px; background: transparent; font-weight: 600;"
+            )
+            saving_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            saving_label.setFixedWidth(110)
+            box.addWidget(saving_label, 0, Qt.AlignTop)
+        return row
 
     def _update_plan_pill(self) -> None:
         if not self._plan_type:

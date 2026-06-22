@@ -169,6 +169,7 @@ reads discounted as published by each vendor.  Unknown models return
 - **v0.2.0** &mdash; system tray, mini popup, pie chart, heatmap,
   quota desktop notifications, close-to-tray, `--tray-only`,
   `--minimized`.
+- **v0.2.3** — 优化建议模块：6 条规则引擎（缓存命中、高价模型、超大提示、单次超大、输入输出偏倍、思考占比）；Dashboard 新增优化建议卡片；菜单 ·优化· 下可导出 Markdown 报告、复制单行总结、查看规则说明；UsageStats 新增 cache_hit_rate / interaction_count 字段。
 - **v0.2.2** &mdash; 修复饼图布局裁切（延迟到布局后再绘制，以 widget 本体尺寸计算）；全局强制中文字体；饼图 <5% 分片合并为“其他”；修复主窗口标题乱码；弹窗中“重置 now”改为中文。
 - **v0.2.1** &mdash; 中文 UI，简化为 4 个主要区域：KPI 行、实时折线图、模型饰饰图+工具列表、最近活动。移除了热力图和 7 天堆叠柱。
 - **v0.1.0** &mdash; initial dashboard, line chart, stacked bar,

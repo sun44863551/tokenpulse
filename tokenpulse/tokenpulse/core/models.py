@@ -85,3 +85,27 @@ class SourceStatus:
     file_count: int = 0
     error: Optional[str] = None
     active: bool = False
+
+
+# ---------------------------------------------------------------- optimization
+# Severity levels for optimization tips, in increasing order of urgency.
+TIP_INFO = "info"
+TIP_LOW = "low"
+TIP_MEDIUM = "medium"
+TIP_HIGH = "high"
+
+_TIP_RANK = {TIP_INFO: 0, TIP_LOW: 1, TIP_MEDIUM: 2, TIP_HIGH: 3}
+
+
+@dataclass
+class OptimizationTip:
+    """One actionable suggestion produced by the optimizer."""
+
+    severity: str  # one of TIP_INFO / TIP_LOW / TIP_MEDIUM / TIP_HIGH
+    code: str      # short machine identifier, e.g. "low_cache_hit"
+    title: str     # one-line summary, Chinese
+    detail: str    # 1-2 sentence explanation, Chinese
+    saving: str = ""  # estimated saving ("~¥X/turn", "~30%位")
+
+    def rank(self) -> int:
+        return _TIP_RANK.get(self.severity, 0)
