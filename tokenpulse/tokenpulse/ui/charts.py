@@ -30,8 +30,8 @@ def _pick_cn_font() -> str:
 _CN_FONT = _pick_cn_font()
 # pyqtgraph uses Qt's rendering pipeline.  We force a dark, high-DPI
 # style that matches the rest of the app.
-pg.setConfigOption("background", "#0d1117")
-pg.setConfigOption("foreground", "#e6edf3")
+pg.setConfigOption("background", "#FFFFFF")
+pg.setConfigOption("foreground", "#605E5C")
 pg.setConfigOption("antialias", True)
 
 
@@ -44,7 +44,8 @@ class TimeSeriesChart(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.plot = pg.PlotWidget(title="")
-        self.plot.showGrid(x=True, y=True, alpha=0.15)
+        self.plot.showGrid(x=True, y=True, alpha=0.5)
+        self.plot.setBackground("#FFFFFF")
         self.plot.setLabel("left", "Token数", **{"font-family": _CN_FONT, "font-size": "11px"})
 
         self.plot.setLabel("bottom", "时间", **{"font-family": _CN_FONT, "font-size": "11px"})
@@ -66,13 +67,20 @@ class TimeSeriesChart(QWidget):
             lambda: deque(maxlen=240)  # 4 hours at 1-minute buckets
         )
         self._colors = {
-            "codex": "#2f81f7",
-            "claude-code": "#a371f7",
-            "total": "#39d353",
+            "codex": "#0078D4",
+            "claude-code": "#8661C5",
+            "total": "#107C10",
         }
         legend = self.plot.addLegend(offset=(10, 10))
-        legend.setBrush("#161b22")
-        legend.setPen("#30363d")
+        legend.setBrush("#FFFFFF")
+        legend.setPen("#EDEBE9")
+        # Style legend text dark for light theme
+        try:
+            for label_item in legend.items:
+                if len(label_item) >= 2:
+                    label_item[1].setAttr("color", "#1F1F1F")
+        except Exception:
+            pass
 
     def add_point(self, tool: str, ts_ms: int, value: float) -> None:
         bucket_ts = (ts_ms // 60_000) * 60  # minute bucket
@@ -92,7 +100,7 @@ class TimeSeriesChart(QWidget):
         xs = [b[0] for b in buckets]
         ys = [b[1] for b in buckets]
         if tool not in self._curves:
-            color = self._colors.get(tool, "#e6edf3")
+            color = self._colors.get(tool, "#0078D4")
             self._curves[tool] = self.plot.plot(
                 xs,
                 ys,
@@ -108,11 +116,11 @@ class TokenBreakdownBar(QWidget):
     """Stacked horizontal bar showing input/output/cache_read/cache_write/thinking."""
 
     COLORS = {
-        "input": "#2f81f7",
-        "output": "#39d353",
-        "cache_read": "#a371f7",
-        "cache_write": "#d29922",
-        "thinking": "#f78166",
+        "input": "#0078D4",
+        "output": "#107C10",
+        "cache_read": "#8661C5",
+        "cache_write": "#FF8C00",
+        "thinking": "#D13438",
     }
     LABELS = {
         "input": "输入",
@@ -130,7 +138,7 @@ class TokenBreakdownBar(QWidget):
         self.plot.setMouseEnabled(x=False, y=False)
         self.plot.hideButtons()
         self.plot.getPlotItem().setMenuEnabled(False)
-        self.plot.setBackground("#161b22")
+        self.plot.setBackground("#FFFFFF")
         layout.addWidget(self.plot)
 
 
@@ -174,23 +182,23 @@ class TokenBreakdownBar(QWidget):
         for idx, tool in enumerate(tools):
             total = sum(cat.get(tool, 0) for cat in totals.values())
             label = pg.TextItem(
-                text=f"{total:,}", color="#e6edf3", anchor=(0, 0.5)
+                text=f"{total:,}", color="#1F1F1F", anchor=(0, 0.5)
             )
             label.setPos(left[idx], idx)
             self.plot.addItem(label)
 
 # ---------------------------------------------------------------- palette
 _PALETTE = [
-    "#2f81f7",  # blue
-    "#a371f7",  # purple
-    "#39d353",  # green
-    "#d29922",  # amber
-    "#f78166",  # orange
-    "#db61a2",  # pink
-    "#58a6ff",  # light blue
-    "#7ee787",  # light green
-    "#ff7b72",  # red
-    "#bc8cff",  # lavender
+    "#0078D4",  # Microsoft blue
+    "#107C10",  # green
+    "#FF8C00",  # orange
+    "#8661C5",  # purple
+    "#D13438",  # red
+    "#00B294",  # teal
+    "#B146C2",  # magenta
+    "#008272",  # dark teal
+    "#A4262C",  # dark red
+    "#CA5010",  # dark orange
 ]
 
 
@@ -214,7 +222,7 @@ class ModelPieChart(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.view = pg.GraphicsView()
-        self.view.setBackground("#161b22")
+        self.view.setBackground("#FFFFFF")
         self.view.setRenderHint(QPainter.Antialiasing, True)
         layout.addWidget(self.view, stretch=1)
         self._items: list = []
@@ -304,7 +312,7 @@ class ModelPieChart(QWidget):
             # Trim very long labels so the chart stays compact.
             short = label if len(label) <= 14 else label[:12] + "..."
             text = "%s\n%.0f%%" % (short, pct)
-            t = pg.TextItem(text=text, color="#e6edf3", anchor=(0.5, 0.5))
+            t = pg.TextItem(text=text, color="#1F1F1F", anchor=(0.5, 0.5))
             t.setFont(slice_font)
             t.setPos(lx, ly)
             self.view.addItem(t)
@@ -314,7 +322,7 @@ class ModelPieChart(QWidget):
         # Center label: total.
         total_text = pg.TextItem(
             text=_humanize(total),
-            color="#f0f6fc", anchor=(0.5, 0.5),
+            color="#1F1F1F", anchor=(0.5, 0.5),
         )
         f = QFont(_CN_FONT, 11)
         f.setBold(True)
@@ -351,7 +359,7 @@ def _make_donut_slice(cx, cy, r_outer, r_inner, a0, a1, color):
     path.closeSubpath()
     item = QGraphicsPathItem(path)
     item.setBrush(QBrush(QColor(color)))
-    item.setPen(QPen(QColor("#0d1117"), 1))
+    item.setPen(QPen(QColor("#FFFFFF"), 1))
     return item
 
 
@@ -370,7 +378,7 @@ class DailyHeatmap(QWidget):
         self.plot.setMouseEnabled(x=False, y=False)
         self.plot.hideButtons()
         self.plot.getPlotItem().setMenuEnabled(False)
-        self.plot.setBackground("#161b22")
+        self.plot.setBackground("#FFFFFF")
         self.plot.setAspectLocked(lock=True, ratio=1.0)
         layout.addWidget(self.plot)
 

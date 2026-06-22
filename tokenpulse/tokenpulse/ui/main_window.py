@@ -28,8 +28,8 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self._controller = controller
         self.setWindowTitle("TokenPulse")
-        self.resize(1440, 960)
-        self.setMinimumSize(1080, 720)
+        self.resize(1366, 820)
+        self.setMinimumSize(1280, 720)
         self.setStyleSheet(QSS)
 
         self.dashboard = Dashboard(controller, self)

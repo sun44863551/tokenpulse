@@ -1,4 +1,4 @@
-"""一键优化对话框。展示全部优化建议，支持导出报告和复制全部。"""
+"""One-click optimization dialog. Light PC-Manager theme matching the dashboard."""
 
 from __future__ import annotations
 
@@ -23,11 +23,12 @@ from ..core.optimizer import summarise as summarise_tips
 from ..core.models import OptimizationTip
 
 
+# Light theme: soft tinted backgrounds with strong accent text.
 SEVERITY_STYLE = {
-    "high": ("#5a1d1d", "#ff7b72", "⚠", "高"),
-    "medium": ("#5a3d1d", "#d29922", "⚡", "中"),
-    "low": ("#1d3a5a", "#58a6ff", "ℹ", "低"),
-    "info": ("#1d3a5a", "#8b949e", "•", "信息"),
+    "high":   ("#FDE7E9", "#D13438", "⚠", "高"),
+    "medium": ("#FFF4CE", "#866800", "⚡", "中"),
+    "low":    ("#DEECF9", "#0078D4", "ℹ", "低"),
+    "info":   ("#F3F2F1", "#605E5C", "•", "信息"),
 }
 
 
@@ -40,9 +41,8 @@ def _wrap_tip(parent: QWidget, tip: OptimizationTip) -> QFrame:
         "QFrame#tipsDialogCard {"
         "  background-color: %s;"
         "  border-radius: 8px;"
-        "  border: 1px solid #30363d;"
-        "}"
-        % bg
+        "  border: 1px solid #EDEBE9;"
+        "}" % bg
     )
     outer = QVBoxLayout(card)
     outer.setContentsMargins(14, 10, 14, 12)
@@ -59,7 +59,7 @@ def _wrap_tip(parent: QWidget, tip: OptimizationTip) -> QFrame:
     title_row.addWidget(icon_label, 0, Qt.AlignTop)
     title_label = QLabel(tip.title)
     title_label.setStyleSheet(
-        "color: #f0f6fc; font-size: 14px; font-weight: 600; background: transparent;"
+        "color: #1F1F1F; font-size: 14px; font-weight: 600; background: transparent;"
     )
     title_label.setWordWrap(True)
     title_row.addWidget(title_label, 1)
@@ -68,34 +68,32 @@ def _wrap_tip(parent: QWidget, tip: OptimizationTip) -> QFrame:
     badge.setFixedSize(36, 20)
     badge.setStyleSheet(
         "color: %s; font-size: 11px; font-weight: 700;"
-        " background-color: rgba(255,255,255,0.08);"
+        " background-color: rgba(0,0,0,0.04);"
         " border-radius: 10px;" % fg
     )
     title_row.addWidget(badge, 0, Qt.AlignTop)
     if tip.saving:
         saving_label = QLabel(tip.saving)
         saving_label.setStyleSheet(
-            "color: #7ee787; font-size: 12px; font-weight: 600;"
+            "color: #107C10; font-size: 12px; font-weight: 600;"
             " background: transparent;"
         )
         saving_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         title_row.addWidget(saving_label, 0, Qt.AlignTop)
     outer.addLayout(title_row)
 
-    # Detail (full text, multi-line)
     detail_label = QLabel(tip.detail)
     detail_label.setWordWrap(True)
     detail_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
     detail_label.setStyleSheet(
-        "color: #c9d1d9; font-size: 12px; line-height: 1.4em;"
+        "color: #1F1F1F; font-size: 12px; line-height: 1.4em;"
         " background: transparent;"
     )
     outer.addWidget(detail_label)
 
-    # Code label (small, dim)
     code_label = QLabel("规则代码: " + tip.code)
     code_label.setStyleSheet(
-        "color: #8b949e; font-size: 11px; background: transparent;"
+        "color: #8A8886; font-size: 11px; background: transparent;"
     )
     outer.addWidget(code_label)
 
@@ -103,7 +101,7 @@ def _wrap_tip(parent: QWidget, tip: OptimizationTip) -> QFrame:
 
 
 class TipsDialog(QDialog):
-    """一键优化对话框。展示完整优化建议并提供导出/复制操作。"""
+    """Light-themed one-click optimization dialog."""
 
     def __init__(
         self,
@@ -121,9 +119,9 @@ class TipsDialog(QDialog):
         self.resize(720, 600)
         self.setMinimumSize(560, 420)
         self.setStyleSheet(
-            "QDialog { background-color: #0d1117; color: #e6edf3; }"
-            " QScrollArea { background-color: #0d1117; border: none; }"
-            " QWidget#tipsDialogScrollContent { background-color: #0d1117; }"
+            "QDialog { background-color: #F3F3F3; color: #1F1F1F; }"
+            " QScrollArea { background-color: #F3F3F3; border: none; }"
+            " QWidget#tipsDialogScrollContent { background-color: #F3F3F3; }"
         )
 
         root = QVBoxLayout(self)
@@ -136,11 +134,11 @@ class TipsDialog(QDialog):
         title_font.setPointSize(16)
         title_font.setBold(True)
         title.setFont(title_font)
-        title.setStyleSheet("color: #f0f6fc;")
+        title.setStyleSheet("color: #1F1F1F;")
         root.addWidget(title)
 
         subtitle = QLabel(summarise_tips(tips) if tips else "没有需要处理的问题。")
-        subtitle.setStyleSheet("color: #8b949e; font-size: 12px;")
+        subtitle.setStyleSheet("color: #605E5C; font-size: 12px;")
         subtitle.setWordWrap(True)
         root.addWidget(subtitle)
 
@@ -148,43 +146,39 @@ class TipsDialog(QDialog):
         kpi_row = QHBoxLayout()
         kpi_row.setSpacing(10)
         kpi_data = self._count_by_severity(tips)
-        for sev_key, sev_label in (("high", "高优先级"), ("medium", "中优先级"), ("low", "低优先级")):
-            n = kpi_data.get(sev_key, 0)
-            bg, fg, _, _ = SEVERITY_STYLE[sev_key]
+        kpi_specs = [
+            ("高优先级", kpi_data.get("high", 0), "#D13438", "#FDE7E9"),
+            ("中优先级", kpi_data.get("medium", 0), "#866800", "#FFF4CE"),
+            ("低优先级", kpi_data.get("low", 0), "#0078D4", "#DEECF9"),
+        ]
+        for label_text, count, color, bg in kpi_specs:
             kpi = QFrame()
             kpi.setStyleSheet(
-                "QFrame { background-color: %s; border-radius: 8px; }" % bg
+                "background-color: %s; border-radius: 8px; border: 1px solid #EDEBE9;" % bg
             )
-            kpi.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             kpi_lay = QVBoxLayout(kpi)
             kpi_lay.setContentsMargins(12, 8, 12, 8)
-            kpi_lay.setSpacing(2)
-            n_label = QLabel(str(n))
-            n_label.setStyleSheet(
-                "color: #f0f6fc; font-size: 22px; font-weight: 700; background: transparent;"
-            )
-            sev_text = QLabel(sev_label)
-            sev_text.setStyleSheet(
-                "color: %s; font-size: 11px; background: transparent;" % fg
-            )
-            kpi_lay.addWidget(n_label)
-            kpi_lay.addWidget(sev_text)
+            kpi_lay.setSpacing(0)
+            n = QLabel(str(count))
+            n.setStyleSheet("color: %s; font-size: 18px; font-weight: 700; background: transparent;" % color)
+            t = QLabel(label_text)
+            t.setStyleSheet("color: #605E5C; font-size: 11px; background: transparent;")
+            kpi_lay.addWidget(n)
+            kpi_lay.addWidget(t)
             kpi_row.addWidget(kpi)
+        # "All good" KPI when no tips
         if not tips:
             ok_kpi = QFrame()
             ok_kpi.setStyleSheet(
-                "QFrame { background-color: #0d4429; border-radius: 8px; }"
+                "background-color: #DFF6DD; border-radius: 8px; border: 1px solid #EDEBE9;"
             )
             ok_lay = QVBoxLayout(ok_kpi)
             ok_lay.setContentsMargins(12, 8, 12, 8)
+            ok_lay.setSpacing(0)
             ok_n = QLabel("✓")
-            ok_n.setStyleSheet(
-                "color: #7ee787; font-size: 22px; font-weight: 700; background: transparent;"
-            )
-            ok_t = QLabel("当前使用模式良好")
-            ok_t.setStyleSheet(
-                "color: #7ee787; font-size: 11px; background: transparent;"
-            )
+            ok_n.setStyleSheet("color: #107C10; font-size: 18px; font-weight: 700; background: transparent;")
+            ok_t = QLabel("使用状态良好")
+            ok_t.setStyleSheet("color: #605E5C; font-size: 11px; background: transparent;")
             ok_lay.addWidget(ok_n)
             ok_lay.addWidget(ok_t)
             kpi_row.addWidget(ok_kpi)
@@ -205,7 +199,7 @@ class TipsDialog(QDialog):
         else:
             ok_card = QFrame(content)
             ok_card.setStyleSheet(
-                "background-color: #0d4429; border-radius: 8px;"
+                "background-color: #DFF6DD; border-radius: 8px; border: 1px solid #EDEBE9;"
             )
             ok_lay = QVBoxLayout(ok_card)
             ok_lay.setContentsMargins(14, 12, 14, 12)
@@ -214,7 +208,7 @@ class TipsDialog(QDialog):
             )
             ok_text.setWordWrap(True)
             ok_text.setStyleSheet(
-                "color: #7ee787; font-size: 13px; background: transparent;"
+                "color: #107C10; font-size: 13px; background: transparent;"
             )
             ok_lay.addWidget(ok_text)
             content_layout.addWidget(ok_card)
@@ -226,14 +220,14 @@ class TipsDialog(QDialog):
         footer = QHBoxLayout()
         footer.setSpacing(8)
         export_btn = QPushButton("导出 Markdown 报告")
-        export_btn.setObjectName("primaryButton")
         export_btn.setStyleSheet(
             "QPushButton {"
-            "  background-color: #1f6feb; color: white; font-weight: 600;"
+            "  background-color: #0078D4; color: white; font-weight: 600;"
             "  border: none; border-radius: 6px; padding: 8px 14px;"
             "}"
-            "QPushButton:hover { background-color: #388bfd; }"
-            "QPushButton:pressed { background-color: #1158c7; }"
+            "QPushButton:hover { background-color: #106EBE; }"
+            "QPushButton:pressed { background-color: #005A9E; }"
+            "QPushButton:disabled { background-color: #C8C6C4; }"
         )
         export_btn.setEnabled(bool(tips))
         export_btn.clicked.connect(self._handle_export)
@@ -242,10 +236,11 @@ class TipsDialog(QDialog):
         copy_btn = QPushButton("复制全部到剪贴板")
         copy_btn.setStyleSheet(
             "QPushButton {"
-            "  background-color: #21262d; color: #c9d1d9;"
-            "  border: 1px solid #30363d; border-radius: 6px; padding: 8px 14px;"
+            "  background-color: #FFFFFF; color: #1F1F1F;"
+            "  border: 1px solid #EDEBE9; border-radius: 6px; padding: 8px 14px;"
             "}"
-            "QPushButton:hover { background-color: #30363d; color: #f0f6fc; }"
+            "QPushButton:hover { background-color: #F3F2F1; border-color: #0078D4; color: #0078D4; }"
+            "QPushButton:disabled { color: #C8C6C4; }"
         )
         copy_btn.setEnabled(bool(tips))
         copy_btn.clicked.connect(self._handle_copy)
@@ -256,10 +251,10 @@ class TipsDialog(QDialog):
         reanalyze_btn = QPushButton("重新分析")
         reanalyze_btn.setStyleSheet(
             "QPushButton {"
-            "  background-color: transparent; color: #8b949e;"
-            "  border: 1px solid #30363d; border-radius: 6px; padding: 8px 14px;"
+            "  background-color: transparent; color: #605E5C;"
+            "  border: 1px solid #EDEBE9; border-radius: 6px; padding: 8px 14px;"
             "}"
-            "QPushButton:hover { color: #f0f6fc; border-color: #58a6ff; }"
+            "QPushButton:hover { color: #0078D4; border-color: #0078D4; }"
         )
         reanalyze_btn.clicked.connect(self.accept)
         footer.addWidget(reanalyze_btn)
@@ -267,10 +262,10 @@ class TipsDialog(QDialog):
         close_btn = QPushButton("关闭")
         close_btn.setStyleSheet(
             "QPushButton {"
-            "  background-color: transparent; color: #c9d1d9;"
-            "  border: 1px solid #30363d; border-radius: 6px; padding: 8px 14px;"
+            "  background-color: transparent; color: #1F1F1F;"
+            "  border: 1px solid #EDEBE9; border-radius: 6px; padding: 8px 14px;"
             "}"
-            "QPushButton:hover { color: #f0f6fc; border-color: #8b949e; }"
+            "QPushButton:hover { border-color: #8A8886; }"
         )
         close_btn.clicked.connect(self.reject)
         footer.addWidget(close_btn)
@@ -287,7 +282,6 @@ class TipsDialog(QDialog):
         if self._on_export is not None:
             self._on_export()
         else:
-            # Fallback: copy a plaintext summary to clipboard
             QApplication.clipboard().setText(summarise_tips(self._tips))
 
     def _handle_copy(self) -> None:
@@ -300,7 +294,7 @@ class TipsDialog(QDialog):
     def _format_plaintext(self) -> str:
         lines = ["TokenPulse 优化建议", ""]
         for i, t in enumerate(self._tips, 1):
-            bg, _, _, label = SEVERITY_STYLE.get(t.severity, SEVERITY_STYLE["info"])
+            _, _, _, label = SEVERITY_STYLE.get(t.severity, SEVERITY_STYLE["info"])
             lines.append(f"{i}. [{label}] {t.title}")
             lines.append(f"   规则: {t.code}")
             lines.append(f"   {t.detail}")

@@ -166,6 +166,22 @@ reads discounted as published by each vendor.  Unknown models return
 
 ## Changelog
 
+### v0.2.5 — Microsoft PC Manager 浅色主题
+- **风格重塑**: 全面采用微软电脑管家 (PC Manager) 浅色主题
+  - 背景 #F3F3F3, 卡片 #FFFFFF, 微软蓝 #0078D4 强调色
+  - 大圆角 (12-14px), 留白充足, Microsoft YaHei UI 字体优先
+  - 状态 pill 四种: 默认/成功/警告/危险, 颜色柔和
+- **Hero 卡修复**: 顶部新增 hero 区域(状态 pill + 主数 34px + 副信息 + 三个大按钮)
+  - 修复了之前 hero 卡被压扁导致大数字无法显示的 bug
+  - 整体布局包到 QScrollArea, 任何窗口高度都不会挤压内容
+- **三个大按钮**: 一键优化(主按钮)/ 导出报告 / 刷新
+  - 颜色与 PC Manager 一致: 主按钮微软蓝, 次按钮白底浅边框
+- **4 个小统计丸**: 预估费用 / 交互次数 / 缓存命中率 / 平均输入
+  - 字号 22px, 配合 hero 大主数, 信息层级清晰
+- **弹窗浅色化**: 一键优化对话框与系统托盘迷你弹窗也改为浅色
+  - 严重度颜色 (红/黄/蓝) 保持不变, 但背景改为柔和染色
+
+
 - **v0.2.0** &mdash; system tray, mini popup, pie chart, heatmap,
   quota desktop notifications, close-to-tray, `--tray-only`,
   `--minimized`.

@@ -1,4 +1,4 @@
-"""System tray icon + a compact popup window for at-a-glance stats."""
+"""System tray icon + a compact popup window for at-a-glance stats (light theme)."""
 
 from __future__ import annotations
 
@@ -32,7 +32,10 @@ from ..storage.db import Totals
 
 # ---------------------------------------------------------------- icon
 def _build_icon() -> QIcon:
-    """Draw a small chart icon programmatically so we ship no PNGs."""
+    """Draw a small chart icon programmatically so we ship no PNGs.
+
+    Uses Microsoft blue accent to match the dashboard theme.
+    """
     sizes = [16, 24, 32, 48, 64, 128, 256]
     icon = QIcon()
     for s in sizes:
@@ -43,8 +46,8 @@ def _build_icon() -> QIcon:
         # Rounded square background.
         margin = max(1, s // 16)
         rect = pm.rect().adjusted(margin, margin, -margin, -margin)
-        p.setBrush(QBrush(QColor("#2f81f7")))
-        p.setPen(QPen(QColor("#1f6feb"), max(1, s // 32)))
+        p.setBrush(QBrush(QColor("#0078D4")))
+        p.setPen(QPen(QColor("#005A9E"), max(1, s // 32)))
         p.drawRoundedRect(rect, s * 0.18, s * 0.18)
         # Three bars (chart glyph).
         bar_w = max(1, s // 8)
@@ -54,7 +57,7 @@ def _build_icon() -> QIcon:
         x = int(s * 0.22)
         for h in heights:
             p.setPen(Qt.NoPen)
-            p.setBrush(QBrush(QColor("#e6edf3")))
+            p.setBrush(QBrush(QColor("#FFFFFF")))
             p.drawRoundedRect(x, base_y - h, bar_w, h, max(1, s // 32), max(1, s // 32))
             x += bar_w + gap
         p.end()
@@ -64,18 +67,14 @@ def _build_icon() -> QIcon:
 
 # ---------------------------------------------------------------- popup
 class MiniPopup(QWidget):
-    """A compact, always-on-top summary window.
-
-    Shown when the user clicks the tray icon.  Sized small enough to
-    park in a corner of the screen but big enough to be useful.
-    """
+    """A compact, always-on-top summary window (light theme)."""
 
     def __init__(self, controller: AppController):
         super().__init__(None, Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self._controller = controller
         self.setAttribute(Qt.WA_TranslucentBackground, False)
         self.setWindowTitle("TokenPulse")
-        self.resize(340, 220)
+        self.resize(340, 240)
         self._build()
         self._timer = QTimer(self)
         self._timer.setInterval(1000)
@@ -91,17 +90,17 @@ class MiniPopup(QWidget):
         frame.setStyleSheet(
             """
             QFrame#card {
-                background-color: #161b22;
-                border: 1px solid #30363d;
+                background-color: #FFFFFF;
+                border: 1px solid #EDEBE9;
                 border-radius: 10px;
             }
-            QLabel#title { color: #f0f6fc; font-size: 14px; font-weight: 600; }
-            QLabel#sub   { color: #8b949e; font-size: 11px; }
-            QLabel#val   { color: #f0f6fc; font-size: 22px; font-weight: 600; }
-            QLabel#row   { color: #c9d1d9; font-size: 12px; }
-            QProgressBar { background-color: #21262d; border: none;
-                           border-radius: 4px; text-align: center; color: #f0f6fc; }
-            QProgressBar::chunk { background-color: #2f81f7; border-radius: 4px; }
+            QLabel#title { color: #1F1F1F; font-size: 14px; font-weight: 600; }
+            QLabel#sub   { color: #605E5C; font-size: 11px; }
+            QLabel#val   { color: #1F1F1F; font-size: 22px; font-weight: 600; }
+            QLabel#row   { color: #1F1F1F; font-size: 12px; }
+            QProgressBar { background-color: #EDEBE9; border: none;
+                           border-radius: 4px; text-align: center; color: #1F1F1F; }
+            QProgressBar::chunk { background-color: #0078D4; border-radius: 4px; }
             """
         )
         outer.addWidget(frame)
@@ -148,13 +147,15 @@ class MiniPopup(QWidget):
         self.bar5h = QProgressBar()
         self.bar5h.setRange(0, 100)
         self.bar5h.setValue(0)
-        self.bar5h.setFormat("5小时 0%")
+        self.bar5h.setFormat("5小时 %p%")
+        self.bar5h.setObjectName("ratePrimary")
         layout.addWidget(self.bar5h)
 
         self.bar7d = QProgressBar()
         self.bar7d.setRange(0, 100)
         self.bar7d.setValue(0)
-        self.bar7d.setFormat("周 0%")
+        self.bar7d.setFormat("周 %p%")
+        self.bar7d.setObjectName("rateSecondary")
         layout.addWidget(self.bar7d)
 
     def _refresh(self) -> None:
@@ -163,9 +164,7 @@ class MiniPopup(QWidget):
         rate = storage.latest_rate_limit()
         if totals.records == 0:
             self.tokens_label.setText("—")
-            self.sub_label.setText(
-                "暂无数据，请启动 Codex 或 Claude Code"
-            )
+            self.sub_label.setText("暂无数据，请启动 Codex 或 Claude Code")
             return
         self.tokens_label.setText(_humanize(totals.total_tokens))
         self.sub_label.setText(
@@ -205,7 +204,7 @@ def _eta(ts_ms) -> str:
     import time
     delta_s = (ts_ms / 1000.0) - time.time()
     if delta_s <= 0:
-        return "即将"  # 即将 (“about to”)
+        return "即将"
     if delta_s < 60:
         return f"{int(delta_s)} 秒"
     if delta_s < 3600:
@@ -236,6 +235,13 @@ class TrayIcon(QSystemTrayIcon):
 
     def _build_menu(self) -> None:
         menu = QMenu()
+        menu.setStyleSheet(
+            "QMenu { background-color: #FFFFFF; color: #1F1F1F;"
+            "  border: 1px solid #EDEBE9; border-radius: 6px; padding: 4px; }"
+            "QMenu::item { padding: 6px 18px; border-radius: 4px; }"
+            "QMenu::item:selected { background-color: #DEECF9; color: #0078D4; }"
+            "QMenu::separator { height: 1px; background: #EDEBE9; margin: 4px 6px; }"
+        )
         show_action = QAction("打开 TokenPulse", self)
         show_action.triggered.connect(self.show_window_requested)
         menu.addAction(show_action)
@@ -262,7 +268,7 @@ class TrayIcon(QSystemTrayIcon):
             if screen is not None:
                 scr = screen.availableGeometry()
                 x = geo.x() if geo.x() > 0 else scr.right() - 360
-                y = geo.y() - 230 if geo.y() > 240 else scr.bottom() - 230
+                y = geo.y() - 250 if geo.y() > 260 else scr.bottom() - 250
                 self._popup.move(x, y)
             self._popup.show()
         else:
