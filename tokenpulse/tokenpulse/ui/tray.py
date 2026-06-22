@@ -148,13 +148,13 @@ class MiniPopup(QWidget):
         self.bar5h = QProgressBar()
         self.bar5h.setRange(0, 100)
         self.bar5h.setValue(0)
-        self.bar5h.setFormat("5h 0%")
+        self.bar5h.setFormat("5小时 0%")
         layout.addWidget(self.bar5h)
 
         self.bar7d = QProgressBar()
         self.bar7d.setRange(0, 100)
         self.bar7d.setValue(0)
-        self.bar7d.setFormat("7d 0%")
+        self.bar7d.setFormat("周 0%")
         layout.addWidget(self.bar7d)
 
     def _refresh(self) -> None:
@@ -164,12 +164,12 @@ class MiniPopup(QWidget):
         if totals.records == 0:
             self.tokens_label.setText("—")
             self.sub_label.setText(
-                "No data yet — start Codex or Claude Code."
+                "暂无数据，请启动 Codex 或 Claude Code"
             )
             return
         self.tokens_label.setText(_humanize(totals.total_tokens))
         self.sub_label.setText(
-            "%d record(s) · In %s · Out %s · Cache %s"
+            "%d 条记录 · 输入 %s · 输出 %s · 缓存 %s"
             % (
                 totals.records,
                 _humanize(totals.input_tokens),
@@ -177,16 +177,16 @@ class MiniPopup(QWidget):
                 _humanize(totals.cache_read_tokens),
             )
         )
-        self.cost_label.setText("Cost: $%.2f" % totals.cost)
-        self.turns_label.setText("Turns: %d" % totals.interactions)
+        self.cost_label.setText("费用：¥%.2f" % totals.cost)
+        self.turns_label.setText("轮次：%d" % totals.interactions)
         if rate:
-            self.plan_label.setText("Plan: %s" % (rate.plan_type or "?"))
+            self.plan_label.setText("套餐：%s" % (rate.plan_type or "—"))
             primary = rate.primary_used_percent or 0
             secondary = rate.secondary_used_percent or 0
             self.bar5h.setValue(int(primary))
-            self.bar5h.setFormat("5h %.0f%%  reset %s" % (primary, _eta(rate.primary_resets_at)))
+            self.bar5h.setFormat("5小时 %.0f%%  ·  重置 %s" % (primary, _eta(rate.primary_resets_at)))
             self.bar7d.setValue(int(secondary))
-            self.bar7d.setFormat("7d %.0f%%  reset %s" % (secondary, _eta(rate.secondary_resets_at)))
+            self.bar7d.setFormat("周 %.0f%%  ·  重置 %s" % (secondary, _eta(rate.secondary_resets_at)))
         else:
             self.plan_label.setText("")
 
@@ -224,7 +224,7 @@ class TrayIcon(QSystemTrayIcon):
     def __init__(self, controller: AppController, parent: Optional[QObject] = None):
         super().__init__(_build_icon(), parent)
         self._controller = controller
-        self.setToolTip("TokenPulse")
+        self.setToolTip("TokenPulse 代理量监控")
         self._popup = None
         self._build_menu()
         self.activated.connect(self._on_activated)
@@ -236,11 +236,11 @@ class TrayIcon(QSystemTrayIcon):
 
     def _build_menu(self) -> None:
         menu = QMenu()
-        show_action = QAction("Open TokenPulse", self)
+        show_action = QAction("打开 TokenPulse", self)
         show_action.triggered.connect(self.show_window_requested)
         menu.addAction(show_action)
         menu.addSeparator()
-        refresh_action = QAction("Refresh", self)
+        refresh_action = QAction("刷新", self)
         refresh_action.triggered.connect(self._refresh_tooltip)
         menu.addAction(refresh_action)
         menu.addSeparator()
@@ -273,15 +273,15 @@ class TrayIcon(QSystemTrayIcon):
         totals = storage.totals()
         rate = storage.latest_rate_limit()
         if totals.records == 0:
-            self.setToolTip("TokenPulse — waiting for first event…")
+            self.setToolTip("TokenPulse — 等待首个事件…")
             return
-        tip = "TokenPulse\n%s tokens · $%.2f · %d turns" % (
+        tip = "TokenPulse\n%s tokens · ¥%.2f · %d 轮次" % (
             _humanize(totals.total_tokens),
             totals.cost,
             totals.interactions,
         )
         if rate and rate.primary_used_percent is not None:
-            tip += "\n5h: %.0f%%  |  7d: %.0f%%" % (
+            tip += "\n5小时：%.0f%%  |  周：%.0f%%" % (
                 rate.primary_used_percent,
                 rate.secondary_used_percent or 0,
             )

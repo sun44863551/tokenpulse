@@ -151,8 +151,8 @@ class AppController(QObject):
                 continue
             self._last_alert_ts[key] = time.time()
             self._show_notification(
-                "TokenPulse — %s 5h" % tool,
-                "%.0f%% of the 5-hour quota used." % pct,
+                "TokenPulse — %s 5小时配额" % tool,
+                "已使用 %.0f%% 的 5 小时配额。" % pct,
             )
 
     def _show_notification(self, title: str, body: str) -> None:

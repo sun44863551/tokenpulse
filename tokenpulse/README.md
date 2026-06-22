@@ -169,6 +169,7 @@ reads discounted as published by each vendor.  Unknown models return
 - **v0.2.0** &mdash; system tray, mini popup, pie chart, heatmap,
   quota desktop notifications, close-to-tray, `--tray-only`,
   `--minimized`.
+- **v0.2.1** &mdash; 中文 UI，简化为 4 个主要区域：KPI 行、实时折线图、模型饰饰图+工具列表、最近活动。移除了热力图和 7 天堆叠柱。
 - **v0.1.0** &mdash; initial dashboard, line chart, stacked bar,
   per-tool cards, 5h / weekly quota gauges.
 

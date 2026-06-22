@@ -26,7 +26,7 @@ class MainWindow(QMainWindow):
     def __init__(self, controller: AppController, parent: Optional[QMainWindow] = None):
         super().__init__(parent)
         self._controller = controller
-        self.setWindowTitle("TokenPulse")
+        self.setWindowTitle("TokenPulse 代理量监控")
         self.resize(1280, 820)
         self.setMinimumSize(960, 640)
         self.setStyleSheet(QSS)
@@ -48,41 +48,41 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------- UI build
     def _build_menu(self) -> None:
         bar = self.menuBar()
-        file_menu = bar.addMenu("&File")
-        view_menu = bar.addMenu("&View")
+        file_menu = bar.addMenu("文件(&F)")
+        view_menu = bar.addMenu("视图(&V)")
         if QSystemTrayIcon.isSystemTrayAvailable():
-            hide_action = QAction("Hide to tray", self)
+            hide_action = QAction("隐藏到托盘", self)
             hide_action.setShortcut(QKeySequence("Ctrl+H"))
             hide_action.triggered.connect(self.hide)
             view_menu.addAction(hide_action)
-            show_tray = QAction("Show tray icon", self)
+            show_tray = QAction("显示托盘图标", self)
             show_tray.triggered.connect(self._show_from_tray)
             view_menu.addAction(show_tray)
 
-        refresh_action = QAction("Refresh now", self)
+        refresh_action = QAction("立即刷新", self)
         refresh_action.setShortcut(QKeySequence("F5"))
         refresh_action.triggered.connect(self.dashboard._refresh_totals_from_storage)
         file_menu.addAction(refresh_action)
 
-        rescan_action = QAction("Rescan logs", self)
+        rescan_action = QAction("重新扫描日志", self)
         rescan_action.triggered.connect(self._rescan)
         file_menu.addAction(rescan_action)
 
         file_menu.addSeparator()
-        quit_action = QAction("Quit", self)
+        quit_action = QAction("退出", self)
         quit_action.setShortcut(QKeySequence("Ctrl+Q"))
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
-        help_menu = bar.addMenu("&Help")
-        about = QAction("About TokenPulse", self)
+        help_menu = bar.addMenu("帮助(&H)")
+        about = QAction("关于 TokenPulse", self)
         about.triggered.connect(self._show_about)
         help_menu.addAction(about)
 
     def _build_status_bar(self) -> None:
         bar = QStatusBar(self)
         self.setStatusBar(bar)
-        self._source_label = QLabel("No sources")
+        self._source_label = QLabel("未检测到日志源")
         bar.addWidget(self._source_label, 1)
         self._stats_label = QLabel("0 records")
         bar.addPermanentWidget(self._stats_label)
@@ -95,7 +95,7 @@ class MainWindow(QMainWindow):
             self.hide()
             self._tray.showMessage(
                 "TokenPulse",
-                "Still running in the system tray. Right-click the icon to quit.",
+                "程序仍在后台运行，右键托盘选“退出”",
                 QSystemTrayIcon.Information,
                 3000,
             )
@@ -112,7 +112,7 @@ class MainWindow(QMainWindow):
     @Slot(list)
     def _on_sources_changed(self, sources) -> None:
         if not sources:
-            self._source_label.setText("No log sources found")
+            self._source_label.setText("未检测到日志源，请检查 Codex 或 Claude Code")
             return
         parts = []
         for s in sources:
@@ -142,7 +142,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(
             self,
             "TokenPulse",
-            "TokenPulse v0.2.0\n\n"
-            "Real-time, local-first token-usage visualizer for Codex, Claude Code, and other AI coding CLIs.\n\n"
-            "All data stays on this machine.",
+            "TokenPulse v0.2.0 中文版\n\n"
+            "本地实时统计 Codex、Claude Code 等 AI 编程工具的 Token 使用量。\n\n"
+            "所有数据仅保存在本机。",
         )

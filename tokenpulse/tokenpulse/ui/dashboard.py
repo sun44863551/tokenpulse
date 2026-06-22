@@ -1,13 +1,11 @@
-"""The main dashboard widget.  Owns the layout, chart, and KPI cards."""
+"""仪表盘主窗体。包含简化后的 KPI 卡、实时折线图、模型饰饰图、工具列表和最近活动。"""
 
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import datetime
 from typing import Optional
 
 from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -18,47 +16,47 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
 from ..app import AppController
-from ..core.models import RateLimitSnapshot, SourceStatus
+from ..core.models import SourceStatus
 from ..storage.db import Totals
-from .charts import TimeSeriesChart, TokenBreakdownBar, ModelPieChart, DailyHeatmap
+from .charts import TimeSeriesChart, ModelPieChart
 
 
-def _humanize(n: int) -> str:
+# ---------------------------------------------------------------- helpers
+def _humanize(n) -> str:
+    """将大数缩写为 K/M/B/T。"""
     n = float(n)
-    for unit in ("", "K", "M", "B", "T"):
-        if abs(n) < 1000.0:
-            return f"{n:,.1f}{unit}".replace(".0", "")
-        n /= 1000.0
-    return f"{n:,.1f}P"
+    for unit, suffix in [(1e12, "万亿"), (1e9, "亿"), (1e6, "万"), (1e3, "千")]:
+        if abs(n) >= unit:
+            return f"{n / unit:,.1f}{suffix}".replace(".0", "")
+    return f"{n:,.0f}"
 
 
 def _format_money(amount: float) -> str:
     if amount >= 1:
-        return f"${amount:,.2f}"
+        return f"¥{amount:,.2f}"
     if amount >= 0.01:
-        return f"${amount:.3f}"
-    return f"${amount:.4f}"
+        return f"¥{amount:.3f}"
+    return f"¥{amount:.4f}"
 
 
-def _format_eta(ts_ms: Optional[int]) -> str:
+def _format_eta(ts_ms) -> str:
     if not ts_ms:
         return "—"
     delta_s = (ts_ms / 1000.0) - datetime.now().timestamp()
     if delta_s <= 0:
-        return "now"
+        return "即刷新"
     if delta_s < 60:
-        return f"in {int(delta_s)}s"
+        return f"{int(delta_s)} 秒后"
     if delta_s < 3600:
-        return f"in {int(delta_s // 60)}m"
+        return f"{int(delta_s // 60)} 分钟后"
     if delta_s < 86400:
-        return f"in {delta_s / 3600:.1f}h"
-    return f"in {delta_s / 86400:.1f}d"
+        return f"{delta_s / 3600:.1f} 小时后"
+    return f"{delta_s / 86400:.1f} 天后"
 
 
 def _format_time(ts_ms: int) -> str:
@@ -67,6 +65,7 @@ def _format_time(ts_ms: int) -> str:
     return datetime.fromtimestamp(ts_ms / 1000.0).strftime("%H:%M:%S")
 
 
+# ---------------------------------------------------------------- KPI card
 class _Card(QFrame):
     def __init__(self, title: str, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -86,6 +85,7 @@ class _Card(QFrame):
         layout.addWidget(self.sub_label)
 
 
+# ---------------------------------------------------------------- dashboard
 class Dashboard(QWidget):
     def __init__(self, controller: AppController, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -94,46 +94,40 @@ class Dashboard(QWidget):
         self._interaction_plan = False
         self._plan_type: Optional[str] = None
 
-        # Top KPI row
-        self.total_card = _Card("Total tokens")
-        self.cost_card = _Card("Estimated cost")
-        self.interactions_card = _Card("Interactions")
-        self.interactions_card.sub_label.setText("Subscription turns")
+        # KPI 卡片（三个）
+        self.total_card = _Card("总代理量")
+        self.cost_card = _Card("预估费用")
+        self.interactions_card = _Card("交互次数")
+        self.interactions_card.sub_label.setText("本机会话日志统计")
 
-        # Right side: per-tool breakdown cards
+        # 工具列表（右侧工具统计）
         self.tool_box = QVBoxLayout()
         self.tool_box.setContentsMargins(0, 0, 0, 0)
-        self.tool_box.setSpacing(10)
+        self.tool_box.setSpacing(8)
         self.tool_holder = QWidget()
         self.tool_holder.setLayout(self.tool_box)
         self.tool_scroll = QScrollArea()
         self.tool_scroll.setWidgetResizable(True)
         self.tool_scroll.setWidget(self.tool_holder)
         self.tool_scroll.setFrameShape(QFrame.NoFrame)
-        self._tool_cards: dict[str, dict[str, QLabel]] = {}
+        self._tool_cards: dict = {}
 
-        # Charts
+        # 图表
         self.chart = TimeSeriesChart()
-        self.breakdown = TokenBreakdownBar()
         self.pie = ModelPieChart()
-        self.heatmap = DailyHeatmap()
 
-        # Recent activity
+        # 最近活动
         self.recent = QListWidget()
-        self.recent.setMinimumHeight(160)
+        self.recent.setMinimumHeight(120)
 
         self._build_layout()
 
-        # Connect signals.
         controller.new_usage.connect(self._on_new_usage)
         controller.new_interaction.connect(self._on_new_interaction)
         controller.stats_updated.connect(self._on_stats_updated)
         controller.interaction_plan_changed.connect(self._on_plan_changed)
         controller.sources_changed.connect(self._on_sources_changed)
 
-        # Trigger an initial paint from current storage contents and the
-        # controller's known sources.  The ``sources_changed`` signal may
-        # have fired before this widget existed, so we replay it now.
         self._sync_sources_from_controller()
         self._refresh_totals_from_storage()
 
@@ -143,127 +137,101 @@ class Dashboard(QWidget):
         outer.setContentsMargins(18, 18, 18, 18)
         outer.setSpacing(14)
 
-        # Header row.
+        # 顶部标题行
         header = QHBoxLayout()
         title_box = QVBoxLayout()
         title = QLabel("TokenPulse")
         title.setObjectName("titleLabel")
-        subtitle = QLabel("Real-time token usage for Codex, Claude Code, and friends")
+        subtitle = QLabel("本地实时统计 Codex、Claude Code 等 AI 编程工具的 Token 使用量")
         subtitle.setObjectName("subtitleLabel")
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
         header.addLayout(title_box)
         header.addStretch(1)
-        self.plan_pill = QLabel("Detecting…")
+        self.plan_pill = QLabel("检测中…")
         self.plan_pill.setObjectName("pill")
         self.plan_pill.setVisible(False)
         header.addWidget(self.plan_pill, 0, Qt.AlignRight)
-        self.refresh_button = QPushButton("Refresh now")
+        self.refresh_button = QPushButton("刷新")
         self.refresh_button.clicked.connect(self._refresh_totals_from_storage)
         header.addWidget(self.refresh_button, 0, Qt.AlignRight)
         outer.addLayout(header)
 
-        # KPI grid (responsive).
+        # KPI 行
         kpi_row = QGridLayout()
         kpi_row.setSpacing(10)
         kpi_row.addWidget(self.total_card, 0, 0)
         kpi_row.addWidget(self.cost_card, 0, 1)
         kpi_row.addWidget(self.interactions_card, 0, 2)
-        # Allow the cards to grow with the window.
         for col in range(3):
             kpi_row.setColumnStretch(col, 1)
         outer.addLayout(kpi_row)
 
-        # Main row: chart on the left, tool breakdown on the right.
-        main_row = QHBoxLayout()
-        main_row.setSpacing(14)
+        # 实时折线图（全宽）
         chart_card = QFrame()
         chart_card.setObjectName("card")
         chart_layout = QVBoxLayout(chart_card)
         chart_layout.setContentsMargins(14, 12, 14, 12)
-        chart_title = QLabel("Tokens per minute (live)")
+        chart_title = QLabel("每分钟代理量（实时）")
         chart_title.setObjectName("cardTitle")
         chart_layout.addWidget(chart_title)
         chart_layout.addWidget(self.chart)
-        main_row.addWidget(chart_card, stretch=3)
+        outer.addWidget(chart_card, stretch=3)
+
+        # 二列：模型饰饰图 + 工具列表
+        split_row = QHBoxLayout()
+        split_row.setSpacing(14)
+
+        pie_card = QFrame()
+        pie_card.setObjectName("card")
+        pie_layout = QVBoxLayout(pie_card)
+        pie_layout.setContentsMargins(14, 12, 14, 12)
+        pie_title = QLabel("按模型分布")
+        pie_title.setObjectName("cardTitle")
+        pie_layout.addWidget(pie_title)
+        pie_layout.addWidget(self.pie)
+        split_row.addWidget(pie_card, stretch=2)
 
         tools_card = QFrame()
         tools_card.setObjectName("card")
         tools_layout = QVBoxLayout(tools_card)
         tools_layout.setContentsMargins(14, 12, 14, 12)
-        tools_title = QLabel("Per-tool")
+        tools_title = QLabel("各工具统计")
         tools_title.setObjectName("cardTitle")
         tools_layout.addWidget(tools_title)
         tools_layout.addWidget(self.tool_scroll)
-        main_row.addWidget(tools_card, stretch=2)
-        outer.addLayout(main_row, stretch=3)
+        split_row.addWidget(tools_card, stretch=3)
 
-        # Breakdown + recent.
-        # Pie chart + heatmap row.
-        viz_row = QHBoxLayout()
-        viz_row.setSpacing(14)
-        pie_card = QFrame()
-        pie_card.setObjectName("card")
-        pie_layout = QVBoxLayout(pie_card)
-        pie_layout.setContentsMargins(14, 12, 14, 12)
-        pie_title = QLabel("Tokens by model")
-        pie_title.setObjectName("cardTitle")
-        pie_layout.addWidget(pie_title)
-        pie_layout.addWidget(self.pie)
-        viz_row.addWidget(pie_card, stretch=2)
+        outer.addLayout(split_row, stretch=2)
 
-        heatmap_card = QFrame()
-        heatmap_card.setObjectName("card")
-        heatmap_layout = QVBoxLayout(heatmap_card)
-        heatmap_layout.setContentsMargins(14, 12, 14, 12)
-        heatmap_title = QLabel("Activity heatmap (7d x 24h)")
-        heatmap_title.setObjectName("cardTitle")
-        heatmap_layout.addWidget(heatmap_title)
-        heatmap_layout.addWidget(self.heatmap)
-        viz_row.addWidget(heatmap_card, stretch=3)
-        outer.addLayout(viz_row, stretch=2)
-
-        bottom_row = QHBoxLayout()
-        bottom_row.setSpacing(14)
-        breakdown_card = QFrame()
-        breakdown_card.setObjectName("card")
-        breakdown_layout = QVBoxLayout(breakdown_card)
-        breakdown_layout.setContentsMargins(14, 12, 14, 12)
-        bd_title = QLabel("Token breakdown by tool")
-        bd_title.setObjectName("cardTitle")
-        breakdown_layout.addWidget(bd_title)
-        breakdown_layout.addWidget(self.breakdown)
-        bottom_row.addWidget(breakdown_card, stretch=3)
-
+        # 最近活动（全宽）
         recent_card = QFrame()
         recent_card.setObjectName("card")
         recent_layout = QVBoxLayout(recent_card)
         recent_layout.setContentsMargins(14, 12, 14, 12)
-        r_title = QLabel("Recent activity")
+        r_title = QLabel("最近活动")
         r_title.setObjectName("cardTitle")
         recent_layout.addWidget(r_title)
         recent_layout.addWidget(self.recent)
-        bottom_row.addWidget(recent_card, stretch=2)
-        outer.addLayout(bottom_row, stretch=2)
+        outer.addWidget(recent_card, stretch=2)
 
     # ------------------------------------------------------------------ slots
     @Slot(object)
     def _on_new_usage(self, record) -> None:
-        # Push a point into the per-minute chart.
+        # 推送点到实时图
         self.chart.add_point(record.tool, record.ts, record.total_tokens)
-        # Prepend a recent-activity item.
+        # 插入最近活动
         item_text = (
-            f"{_format_time(record.ts)}  ?  {record.tool}  ?  "
-            f"{record.model or '?'}  ?  {_humanize(record.total_tokens)} tokens"
+            f"{_format_time(record.ts)}  ·  {record.tool}  ·  "
+            f"{record.model or '—'}  ·  {_humanize(record.total_tokens)} tokens"
         )
         li = QListWidgetItem(item_text)
         self.recent.insertItem(0, li)
-        if self.recent.count() > 50:
+        if self.recent.count() > 30:
             self.recent.takeItem(self.recent.count() - 1)
 
     @Slot(object)
     def _on_new_interaction(self, record) -> None:
-        # Refresh interaction counter immediately.
         totals = self._controller.storage().totals()
         self.interactions_card.value_label.setText(f"{totals.interactions:,}")
 
@@ -276,33 +244,26 @@ class Dashboard(QWidget):
         self._interaction_plan = is_interaction_plan
         self._plan_type = plan_type or None
         self._update_plan_pill()
-        # Also adjust the interactions card title to reflect the billing mode.
         if is_interaction_plan:
-            self.interactions_card.title_label.setText("Turns (token plan)")
+            self.interactions_card.title_label.setText("交互次数（计次付费）")
             self.interactions_card.sub_label.setText(
-                f"Subscription plan \"{plan_type}\" — each user turn counts as one interaction."
+                f"订阅套餐 “{plan_type}” 按用户轮次计费"
             )
         else:
-            self.interactions_card.title_label.setText("User turns")
-            self.interactions_card.sub_label.setText(
-                "Turns detected from local session logs."
-            )
+            self.interactions_card.title_label.setText("用户轮次")
+            self.interactions_card.sub_label.setText("从本机会话日志统计")
 
     @Slot(list)
     def _on_sources_changed(self, sources) -> None:
-        # Render per-tool cards for each known source.
-        existing = set(self._tool_cards.keys())
         seen = set()
         for source in sources:
             self._ensure_tool_card(source)
             seen.add(source.tool)
         for tool in list(self._tool_cards.keys()):
             if tool not in seen:
-                # Remove card.
                 w = self._tool_cards.pop(tool)
                 w["frame"].setParent(None)
                 w["frame"].deleteLater()
-        # Force a repaint of totals so per-card values are populated.
         self._refresh_totals_from_storage()
 
     # ----------------------------------------------------------------- render
@@ -318,24 +279,25 @@ class Dashboard(QWidget):
         title.setObjectName("cardTitle")
         value = QLabel("0")
         value.setObjectName("cardValue")
-        sub = QLabel(f"{source.file_count} files")
+        sub = QLabel(f"{source.file_count} 个日志文件")
         sub.setObjectName("cardSubValue")
         layout.addWidget(title)
         layout.addWidget(value)
         layout.addWidget(sub)
 
-        # Per-tool rate-limit bar (Codex-style).
+        # 5h 配额条
         rate_bar = QProgressBar()
         rate_bar.setRange(0, 100)
         rate_bar.setValue(0)
-        rate_bar.setFormat("%p% 5h")
+        rate_bar.setFormat("5小时用量 %p%")
         rate_bar.setObjectName("ratePrimary")
         layout.addWidget(rate_bar)
 
+        # 周配额条
         rate_bar_secondary = QProgressBar()
         rate_bar_secondary.setRange(0, 100)
         rate_bar_secondary.setValue(0)
-        rate_bar_secondary.setFormat("%p% weekly")
+        rate_bar_secondary.setFormat("周用量 %p%")
         rate_bar_secondary.setObjectName("rateSecondary")
         layout.addWidget(rate_bar_secondary)
 
@@ -351,36 +313,38 @@ class Dashboard(QWidget):
         }
 
     def _render_totals(self, totals: Totals, by_tool: dict, rate) -> None:
+        # KPI 卡片
         self.total_card.value_label.setText(_humanize(totals.total_tokens))
         self.total_card.sub_label.setText(
-            f"{totals.records:,} record(s) ? "
-            f"In {_humanize(totals.input_tokens)} · Out {_humanize(totals.output_tokens)}"
+            f"{totals.records:,} 条记录  ·  "
+            f"输入 {_humanize(totals.input_tokens)}  ·  "
+            f"输出 {_humanize(totals.output_tokens)}"
         )
         self.cost_card.value_label.setText(_format_money(totals.cost))
         self.cost_card.sub_label.setText(
-            "Computed from public list prices ? cache reads discounted"
+            "按公开定价计算，缓存读取已折扣"
         )
         self.interactions_card.value_label.setText(f"{totals.interactions:,}")
 
-        # Per-tool cards.
+        # 各工具卡片
         for tool, t in by_tool.items():
             card = self._tool_cards.get(tool)
             if card is None:
                 continue
             card["value"].setText(_humanize(t.total_tokens))
             card["sub"].setText(
-                f"{t.records:,} recs ? In {_humanize(t.input_tokens)} · "
-                f"Out {_humanize(t.output_tokens)} ? {_format_money(t.cost)}"
+                f"{t.records:,} 条  ·  输入 {_humanize(t.input_tokens)}  ·  "
+                f"输出 {_humanize(t.output_tokens)}  ·  {_format_money(t.cost)}"
             )
 
-        # Codex rate-limit bar.
+        # 5h / 周配额条
         if rate is not None and rate.tool in self._tool_cards:
             card = self._tool_cards[rate.tool]
             primary = rate.primary_used_percent or 0
             secondary = rate.secondary_used_percent or 0
             card["rate_primary"].setValue(int(primary))
             card["rate_primary"].setFormat(
-                f"{primary:.0f}% 5h  ?  reset {_format_eta(rate.primary_resets_at)}"
+                f"5小时 {primary:.0f}%  ·  重置 {_format_eta(rate.primary_resets_at)}"
             )
             if primary >= 90:
                 card["rate_primary"].setObjectName("danger")
@@ -393,7 +357,7 @@ class Dashboard(QWidget):
 
             card["rate_secondary"].setValue(int(secondary))
             card["rate_secondary"].setFormat(
-                f"{secondary:.0f}% wk  ?  reset {_format_eta(rate.secondary_resets_at)}"
+                f"周 {secondary:.0f}%  ·  重置 {_format_eta(rate.secondary_resets_at)}"
             )
             if secondary >= 90:
                 card["rate_secondary"].setObjectName("danger")
@@ -404,32 +368,9 @@ class Dashboard(QWidget):
             card["rate_secondary"].style().unpolish(card["rate_secondary"])
             card["rate_secondary"].style().polish(card["rate_secondary"])
 
-        # Stacked bar across tools.
-        breakdown: dict[str, dict[str, int]] = {
-            "input": {},
-            "output": {},
-            "cache_read": {},
-            "cache_write": {},
-            "thinking": {},
-        }
-        # Use totals aggregated across the storage.
-        # For a per-tool breakdown we need to read each tool's breakdown
-        # from the storage; do a single query.
-        per_tool_breakdown = self._controller.storage().breakdown_by_tool()
-        for tool, cats in per_tool_breakdown.items():
-            for cat in breakdown:
-                breakdown[cat][tool] = cats.get(cat, 0)
-        self.breakdown.set_data(breakdown)
-
-        # Pie chart: totals by model (sum the total category).
-        model_totals = {m: cats.get('total', 0) for m, cats in self._controller.storage().totals_by_model().items()}
+        # 模型饰饰图
+        model_totals = {m: cats.get("total", 0) for m, cats in self._controller.storage().totals_by_model().items()}
         self.pie.set_data(model_totals)
-
-        # Heatmap: token volume by weekday x hour over the last 7 days.
-        from datetime import datetime, timedelta
-        since_ms = int((datetime.now() - timedelta(days=7)).timestamp() * 1000)
-        ts_values = [(ts, total) for ts, _tool, total in self._controller.storage().ts_buckets(since_ms)]
-        self.heatmap.set_data(ts_values)
 
     def _update_plan_pill(self) -> None:
         if not self._plan_type:
@@ -437,10 +378,10 @@ class Dashboard(QWidget):
             return
         self.plan_pill.setVisible(True)
         if self._interaction_plan:
-            self.plan_pill.setText(f"Plan: {self._plan_type}  ?  counting turns")
+            self.plan_pill.setText(f"套餐：{self._plan_type}  ·  按轮次计费")
             self.plan_pill.setObjectName("pillSuccess")
         else:
-            self.plan_pill.setText(f"Plan: {self._plan_type}  ?  counting tokens")
+            self.plan_pill.setText(f"套餐：{self._plan_type}  ·  按token计费")
             self.plan_pill.setObjectName("pill")
         self.plan_pill.style().unpolish(self.plan_pill)
         self.plan_pill.style().polish(self.plan_pill)
@@ -451,15 +392,15 @@ class Dashboard(QWidget):
         by_tool = storage.totals_by_tool()
         rate = storage.latest_rate_limit()
         self._render_totals(totals, by_tool, rate)
-        # Plan pill state.
         if rate and rate.plan_type:
             self._on_plan_changed(
                 self._controller.is_interaction_plan(),
                 rate.plan_type,
             )
+
     def _sync_sources_from_controller(self) -> None:
-        """Build per-tool cards for every source the controller knows about."""
-        from ..core.models import SourceStatus
+        """为控制器知道的每个源构建工具卡片。"""
+        import os
         statuses = []
         for s in self._controller.sources():
             file_count = 0
@@ -467,7 +408,6 @@ class Dashboard(QWidget):
                 if p.is_file():
                     file_count += 1
                 elif p.is_dir():
-                    import os
                     for root, _, files in os.walk(p):
                         for f in files:
                             if f.endswith(".jsonl"):

@@ -29,8 +29,8 @@ class TimeSeriesChart(QWidget):
 
         self.plot = pg.PlotWidget(title="")
         self.plot.showGrid(x=True, y=True, alpha=0.15)
-        self.plot.setLabel("left", "Tokens")
-        self.plot.setLabel("bottom", "Time")
+        self.plot.setLabel("left", "Token数")
+        self.plot.setLabel("bottom", "时间")
         self.plot.getPlotItem().setMenuEnabled(False)
         self.plot.setMouseEnabled(x=True, y=False)
         layout.addWidget(self.plot)
@@ -89,11 +89,11 @@ class TokenBreakdownBar(QWidget):
         "thinking": "#f78166",
     }
     LABELS = {
-        "input": "Input",
-        "output": "Output",
-        "cache_read": "Cache read",
-        "cache_write": "Cache write",
-        "thinking": "Thinking",
+        "input": "输入",
+        "output": "输出",
+        "cache_read": "缓存读取",
+        "cache_write": "缓存写入",
+        "thinking": "思考",
     }
 
     def __init__(self, parent: Optional[QWidget] = None):
