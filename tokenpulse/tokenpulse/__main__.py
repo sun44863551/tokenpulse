@@ -66,7 +66,23 @@ def main(argv: list[str] | None = None) -> int:
         if args.minimized:
             window.showMinimized()
         else:
+            # Robust bring-to-front: some hosts spawn the process in a
+            # hidden window station or background session, which causes
+            # ShowWindow to be rejected by the OS even though Qt thinks
+            # the widget is visible. We force the window to the front
+            # and schedule a second raise 200ms later to outlast any
+            # focus-stealing that the IDE / shell might do.
+            from PySide6.QtCore import QTimer
+            window.setWindowFlag(Qt.WindowStaysOnTopHint, True)
             window.show()
+            window.raise_()
+            window.activateWindow()
+            window.setWindowFlag(Qt.WindowStaysOnTopHint, False)
+            window.show()
+            window.raise_()
+            window.activateWindow()
+            QTimer.singleShot(200, window.raise_)
+            QTimer.singleShot(200, window.activateWindow)
     return app.exec()
 
 
