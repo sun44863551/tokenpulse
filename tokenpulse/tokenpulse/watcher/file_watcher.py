@@ -125,7 +125,17 @@ class Pipeline:
         )
         self._thread.start()
 
-    def stop(self) -> None:
+    def stop(self, timeout: float = 10.0) -> None:
+        """Stop the worker.  The join timeout is generous because
+        ``_initial_scan`` walks the user's Codex / Claude Code
+        logs synchronously and can take several seconds on a
+        machine that accumulated months of history.  Returning
+        before the worker thread has actually finished can leave
+        a process_file call mid-flight, which then races with
+        storage.upsert_usage and corrupts the in-memory cache
+        (notably ``_cache_latest_rate``).  Waiting up to 10s is
+        still vastly faster than a user-perceptible pause.
+        """
         self._stop.set()
         if self._observer is not None:
             try:
@@ -134,7 +144,7 @@ class Pipeline:
             except Exception:
                 pass
         if self._thread is not None:
-            self._thread.join(timeout=3.0)
+            self._thread.join(timeout=timeout)
 
     # ----------------------------------------------------- internal helpers
     def _initial_scan(self, source: SourceConfig) -> None:

@@ -35,7 +35,14 @@ CREATE TABLE IF NOT EXISTS usage_records (
     primary_used_percent REAL,
     primary_resets_at INTEGER,
     secondary_used_percent REAL,
-    secondary_resets_at INTEGER
+    secondary_resets_at INTEGER,
+    limit_id TEXT,
+    limit_name TEXT,
+    credits_has_credits INTEGER,
+    credits_unlimited INTEGER,
+    credits_balance TEXT,
+    individual_limit TEXT,
+    rate_limit_reached_type TEXT
 );
 """
 
@@ -121,6 +128,19 @@ class Storage:
         self._rebuild_cache()
 
     # --------------------------------------------------------------- schema
+    # Columns that were added to usage_records after the initial
+    # release.  They are appended via ALTER TABLE so users with an
+    # existing DB do not lose history.
+    _USAGE_ALTER_COLUMNS = (
+        ("limit_id", "TEXT"),
+        ("limit_name", "TEXT"),
+        ("credits_has_credits", "INTEGER"),
+        ("credits_unlimited", "INTEGER"),
+        ("credits_balance", "TEXT"),
+        ("individual_limit", "TEXT"),
+        ("rate_limit_reached_type", "TEXT"),
+    )
+
     def _init_schema(self) -> None:
         with self._lock:
             cur = self._conn.cursor()
@@ -129,7 +149,34 @@ class Storage:
             cur.execute(_CREATE_META)
             for stmt in _CREATE_USAGE_INDEX + _CREATE_INTERACTION_INDEX:
                 cur.execute(stmt)
+            self._migrate_usage_columns(cur)
             self._conn.commit()
+
+    def _migrate_usage_columns(self, cur) -> None:
+        """Idempotently add the post-launch columns to usage_records.
+
+        SQLite has no IF NOT EXISTS for ADD COLUMN before 3.35, so we
+        check pragma_table_info first and only alter when the column
+        is genuinely missing.  This keeps the migration safe to run
+        on every startup.
+        """
+        existing = {
+            row["name"]
+            for row in cur.execute("PRAGMA table_info(usage_records)")
+        }
+        for col, decl in self._USAGE_ALTER_COLUMNS:
+            if col in existing:
+                continue
+            try:
+                cur.execute(
+                    f"ALTER TABLE usage_records ADD COLUMN {col} {decl}"
+                )
+            except sqlite3.OperationalError as exc:  # pragma: no cover - defensive
+                # If two processes race to migrate we may see a
+                # duplicate-column error.  That is fine, it just means
+                # the other process won.
+                if "duplicate column" not in str(exc).lower():
+                    raise
 
     def close(self) -> None:
         with self._lock:
@@ -153,8 +200,12 @@ class Storage:
                  cache_read_tokens, cache_write_tokens, thinking_tokens,
                  cost, session_id, source_file, plan_type,
                  primary_used_percent, primary_resets_at,
-                 secondary_used_percent, secondary_resets_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 secondary_used_percent, secondary_resets_at,
+                 limit_id, limit_name,
+                 credits_has_credits, credits_unlimited, credits_balance,
+                 individual_limit, rate_limit_reached_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.id,
@@ -174,6 +225,13 @@ class Storage:
                     record.primary_resets_at,
                     record.secondary_used_percent,
                     record.secondary_resets_at,
+                    record.limit_id,
+                    record.limit_name,
+                    self._bool_to_int(record.credits_has_credits),
+                    self._bool_to_int(record.credits_unlimited),
+                    record.credits_balance,
+                    record.individual_limit,
+                    record.rate_limit_reached_type,
                 ),
             )
             self._conn.commit()
@@ -394,7 +452,32 @@ class Storage:
 
     # --------------------------------------------------------------- helpers
     @staticmethod
+    def _bool_to_int(value: "Optional[bool]") -> "Optional[int]":
+        """Coerce a bool-ish value into 0/1 for SQLite storage.
+
+        Returning ``None`` (rather than 0) preserves the distinction
+        between "Codex did not report this field" and "Codex
+        explicitly reported False", which matters for the UI state
+        machine in :class:`tokenpulse.ui.dashboard`.
+        """
+        if value is None:
+            return None
+        return 1 if bool(value) else 0
+
+    @staticmethod
+    def _int_to_bool(value):  # type: ignore[no-untyped-def]
+        if value is None:
+            return None
+        return bool(int(value))
+
+    @staticmethod
     def _row_to_record(row: sqlite3.Row) -> UsageRecord:
+        def _col(name, default=None):
+            try:
+                return row[name]
+            except (IndexError, KeyError):
+                return default
+
         return UsageRecord(
             id=row["id"],
             ts=row["ts"],
@@ -413,6 +496,17 @@ class Storage:
             primary_resets_at=row["primary_resets_at"],
             secondary_used_percent=row["secondary_used_percent"],
             secondary_resets_at=row["secondary_resets_at"],
+            limit_id=_col("limit_id"),
+            limit_name=_col("limit_name"),
+            credits_has_credits=Storage._int_to_bool(
+                _col("credits_has_credits")
+            ),
+            credits_unlimited=Storage._int_to_bool(
+                _col("credits_unlimited")
+            ),
+            credits_balance=_col("credits_balance"),
+            individual_limit=_col("individual_limit"),
+            rate_limit_reached_type=_col("rate_limit_reached_type"),
         )
 
     def breakdown_by_tool(self) -> dict:
@@ -441,8 +535,16 @@ class Storage:
                 }
             return out
 
-    def _add_to_cache(self, record: UsageRecord) -> None:
-        """Add one record to every aggregate bucket."""
+    def _add_to_cache(self, record: UsageRecord, update_rate: bool = True) -> None:
+        """Add one record to every aggregate bucket.
+
+        ``update_rate`` defaults to True; the rebuild path passes
+        ``False`` because the rate-limit snapshot is refreshed
+        separately by ``_rebuild_cache`` after all rows are accounted
+        for.  Skipping the per-row update keeps the rebuild loop tight
+        and avoids the snapshot being clobbered by a row that is older
+        than the one we actually want to surface.
+        """
         self._cache_totals.total_tokens += record.total_tokens
         self._cache_totals.input_tokens += record.input_tokens
         self._cache_totals.output_tokens += record.output_tokens
@@ -469,18 +571,35 @@ class Storage:
         bucket.cost += record.cost
         bucket.records += 1
 
-        if record.primary_used_percent is not None or record.secondary_used_percent is not None:
-            snap = RateLimitSnapshot(
-                tool=record.tool,
-                plan_type=record.plan_type,
-                primary_used_percent=record.primary_used_percent,
-                primary_resets_at=record.primary_resets_at,
-                secondary_used_percent=record.secondary_used_percent,
-                secondary_resets_at=record.secondary_resets_at,
-                ts=record.ts,
-            )
-            self._cache_latest_rate = snap
-            self._cache_rate_by_tool[record.tool] = snap
+        if not update_rate:
+            return
+        # Always refresh the rate-limit snapshot so it tracks the
+        # most recent record we have seen.  We do this even when
+        # the record has no quota data at all (third-party models
+        # such as MiniMax-M3): a null snapshot is the truthful
+        # answer and the UI uses RateLimitSnapshot.has_quota_data
+        # to render an accurate "no Codex quota" state.  Without
+        # this, a stale "3% / 5h" bar from weeks ago could pin the
+        # dashboard on every restart until a quota-bearing record
+        # happens to arrive.
+        snap = RateLimitSnapshot(
+            tool=record.tool,
+            plan_type=record.plan_type,
+            primary_used_percent=record.primary_used_percent,
+            primary_resets_at=record.primary_resets_at,
+            secondary_used_percent=record.secondary_used_percent,
+            secondary_resets_at=record.secondary_resets_at,
+            limit_id=record.limit_id,
+            limit_name=record.limit_name,
+            credits_has_credits=record.credits_has_credits,
+            credits_unlimited=record.credits_unlimited,
+            credits_balance=record.credits_balance,
+            individual_limit=record.individual_limit,
+            rate_limit_reached_type=record.rate_limit_reached_type,
+            ts=record.ts,
+        )
+        self._cache_latest_rate = snap
+        self._cache_rate_by_tool[record.tool] = snap
 
     def _sub_from_cache(self, record: UsageRecord) -> None:
         """Remove one record from every aggregate bucket."""
@@ -537,7 +656,16 @@ class Storage:
                 # No change in user-visible counters: keep the cache
                 # as-is, but the rate-limit snapshot may have moved
                 # forward, so update that part.
-                if record.primary_used_percent is not None or record.secondary_used_percent is not None:
+                if (
+                    record.primary_used_percent is not None
+                    or record.secondary_used_percent is not None
+                    or record.rate_limit_reached_type
+                    or record.individual_limit
+                    or record.credits_has_credits is not None
+                    or record.credits_unlimited is not None
+                    or record.limit_id
+                    or record.plan_type
+                ):
                     snap = RateLimitSnapshot(
                         tool=record.tool,
                         plan_type=record.plan_type,
@@ -545,6 +673,13 @@ class Storage:
                         primary_resets_at=record.primary_resets_at,
                         secondary_used_percent=record.secondary_used_percent,
                         secondary_resets_at=record.secondary_resets_at,
+                        limit_id=record.limit_id,
+                        limit_name=record.limit_name,
+                        credits_has_credits=record.credits_has_credits,
+                        credits_unlimited=record.credits_unlimited,
+                        credits_balance=record.credits_balance,
+                        individual_limit=record.individual_limit,
+                        rate_limit_reached_type=record.rate_limit_reached_type,
                         ts=record.ts,
                     )
                     self._cache_latest_rate = snap
@@ -559,6 +694,30 @@ class Storage:
         if is_new:
             self._cache_by_tool[record.tool].records += 1
             self._cache_totals.records += 1
+        # Always refresh the rate-limit snapshot, including for
+        # brand-new rows.  This is critical for users on third-party
+        # models (e.g. MiniMax-M3) where Codex returns a fully-null
+        # rate_limits block: we still need the snapshot to be the
+        # current one so the UI can render an accurate "no data"
+        # state instead of clinging to a stale percentage.
+        snap = RateLimitSnapshot(
+            tool=record.tool,
+            plan_type=record.plan_type,
+            primary_used_percent=record.primary_used_percent,
+            primary_resets_at=record.primary_resets_at,
+            secondary_used_percent=record.secondary_used_percent,
+            secondary_resets_at=record.secondary_resets_at,
+            limit_id=record.limit_id,
+            limit_name=record.limit_name,
+            credits_has_credits=record.credits_has_credits,
+            credits_unlimited=record.credits_unlimited,
+            credits_balance=record.credits_balance,
+            individual_limit=record.individual_limit,
+            rate_limit_reached_type=record.rate_limit_reached_type,
+            ts=record.ts,
+        )
+        self._cache_latest_rate = snap
+        self._cache_rate_by_tool[record.tool] = snap
 
     def _rebuild_cache(self) -> None:
         with self._lock:
@@ -567,12 +726,47 @@ class Storage:
             self._cache_by_hour = defaultdict(Totals.zero)
             self._cache_latest_rate = None
             self._cache_rate_by_tool = {}
+            # Token / cost aggregates do not depend on order, so we
+            # can iterate SQLite's natural row order for those.
             cur = self._conn.execute("SELECT * FROM usage_records")
             for row in cur.fetchall():
                 rec = self._row_to_record(row)
-                self._add_to_cache(rec)
+                self._add_to_cache(rec, update_rate=False)
                 self._cache_by_tool[rec.tool].records += 1
                 self._cache_totals.records += 1
+            # The rate-limit snapshot must reflect the *most recent*
+            # record, not whichever row happens to be last in
+            # SQLite's default order.  We do this as a separate,
+            # ordered pass so that aggregate counting is not slowed
+            # down by an ORDER BY on a 5k-row table.  The chosen
+            # record's snapshot is stored as-is (potentially with
+            # all rate fields None when the user is on a third-party
+            # model such as MiniMax-M3); the UI uses
+            # RateLimitSnapshot.has_quota_data to render the
+            # truthful "no Codex quota" state.
+            latest_row = self._conn.execute(
+                "SELECT * FROM usage_records ORDER BY ts DESC, id ASC LIMIT 1"
+            ).fetchone()
+            if latest_row is not None:
+                latest_rec = self._row_to_record(latest_row)
+                snap = RateLimitSnapshot(
+                    tool=latest_rec.tool,
+                    plan_type=latest_rec.plan_type,
+                    primary_used_percent=latest_rec.primary_used_percent,
+                    primary_resets_at=latest_rec.primary_resets_at,
+                    secondary_used_percent=latest_rec.secondary_used_percent,
+                    secondary_resets_at=latest_rec.secondary_resets_at,
+                    limit_id=latest_rec.limit_id,
+                    limit_name=latest_rec.limit_name,
+                    credits_has_credits=latest_rec.credits_has_credits,
+                    credits_unlimited=latest_rec.credits_unlimited,
+                    credits_balance=latest_rec.credits_balance,
+                    individual_limit=latest_rec.individual_limit,
+                    rate_limit_reached_type=latest_rec.rate_limit_reached_type,
+                    ts=latest_rec.ts,
+                )
+                self._cache_latest_rate = snap
+                self._cache_rate_by_tool[latest_rec.tool] = snap
             cur = self._conn.execute("SELECT COUNT(*) AS n FROM interactions")
             self._cache_totals.interactions = int(cur.fetchone()["n"])
             cur = self._conn.execute("SELECT tool, COUNT(*) AS n FROM interactions GROUP BY tool")

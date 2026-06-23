@@ -1,4 +1,4 @@
-"""Domain models used by parsers, storage, and UI."""
+﻿"""Domain models used by parsers, storage, and UI."""
 
 from __future__ import annotations
 
@@ -28,6 +28,15 @@ class UsageRecord:
     primary_resets_at: Optional[int] = None
     secondary_used_percent: Optional[float] = None
     secondary_resets_at: Optional[int] = None
+    # Codex rate_limits metadata (newer Codex CLI populates these even when
+    # primary/secondary are null, e.g. for non-OpenAI models like MiniMax-M3).
+    limit_id: Optional[str] = None
+    limit_name: Optional[str] = None
+    credits_has_credits: Optional[bool] = None
+    credits_unlimited: Optional[bool] = None
+    credits_balance: Optional[str] = None
+    individual_limit: Optional[str] = None
+    rate_limit_reached_type: Optional[str] = None
 
     @property
     def total_tokens(self) -> int:
@@ -64,7 +73,15 @@ class InteractionRecord:
 
 @dataclass
 class RateLimitSnapshot:
-    """Latest quota snapshot for one tool/plan."""
+    """Latest quota snapshot for one tool/plan.
+
+    ``has_quota_data`` is the most important UI-facing flag: it is True
+    only when Codex actually returned something usable (e.g. primary
+    ``used_percent`` or a non-null ``rate_limit_reached_type``).  When
+    the user is talking to a third-party model such as MiniMax-M3 the
+    Codex backend reports the entire ``rate_limits`` block as null, so
+    the UI must avoid rendering bogus 0% bars.
+    """
 
     tool: str
     plan_type: Optional[str]
@@ -72,7 +89,29 @@ class RateLimitSnapshot:
     primary_resets_at: Optional[int]
     secondary_used_percent: Optional[float]
     secondary_resets_at: Optional[int]
-    ts: int
+    limit_id: Optional[str] = None
+    limit_name: Optional[str] = None
+    credits_has_credits: Optional[bool] = None
+    credits_unlimited: Optional[bool] = None
+    credits_balance: Optional[str] = None
+    individual_limit: Optional[str] = None
+    rate_limit_reached_type: Optional[str] = None
+    ts: int = 0
+
+    @property
+    def has_quota_data(self) -> bool:
+        """True if Codex returned any meaningful quota information."""
+        if self.primary_used_percent is not None:
+            return True
+        if self.secondary_used_percent is not None:
+            return True
+        if self.rate_limit_reached_type:
+            return True
+        if self.individual_limit:
+            return True
+        if self.credits_has_credits or self.credits_unlimited:
+            return True
+        return False
 
 
 @dataclass
@@ -105,7 +144,7 @@ class OptimizationTip:
     code: str      # short machine identifier, e.g. "low_cache_hit"
     title: str     # one-line summary, Chinese
     detail: str    # 1-2 sentence explanation, Chinese
-    saving: str = ""  # estimated saving ("~¥X/turn", "~30%位")
+    saving: str = ""  # estimated saving ("~楼X/turn", "~30%浣?)
     saving_pct: float = 0.0  # estimated token savings ratio, 0-1 (0.3 = 30%)
 
     def rank(self) -> int:

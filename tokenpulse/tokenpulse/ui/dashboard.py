@@ -81,6 +81,141 @@ def _format_time(ts_ms: int) -> str:
         return "—"
     return datetime.fromtimestamp(ts_ms / 1000.0).strftime("%H:%M:%S")
 
+# Rate-limit helpers --------------------------------------------------------
+#
+# As of Codex CLI >= 0.20 the rate_limits block carries a *richer*
+# payload (``credits``, ``individual_limit``,
+# ``rate_limit_reached_type``).  When the active model is provided
+# by a third party (e.g. MiniMax-M3) the entire block can be null.
+# The two helpers below translate the snapshot into a state the
+# UI can render truthfully, without inventing a fake 0% bar.
+
+_NO_DATA_LABELS = {
+    "primary": "5小时额度",
+    "secondary": "周额度",
+}
+
+# Friendly names for "rate_limit_reached_type" enum values that
+# Codex may use in the future.  Kept conservative for now.
+_REACHED_LABELS = {
+    "primary": "5小时额度已用完",
+    "secondary": "周额度已用完",
+    "both": "5小时 + 周额度均已用完",
+    "credit": "Credits 已用完",
+}
+
+
+def _third_party_model_active(rate) -> bool:
+    """Return True when the most recent snapshot looks like a
+    third-party model where Codex did not report quota data.
+
+    Heuristic: rate_limits exists, plan_type may be null, but
+    every numeric/limit field is None.  In that case the Codex
+    backend is intentionally returning "no quota applies".
+    """
+    if rate is None:
+        return False
+    if not hasattr(rate, "has_quota_data"):
+        return False
+    return not rate.has_quota_data
+
+
+def _render_rate_card(
+    bar,
+    kind: str,
+    rate,
+    model_name: str = "",
+) -> None:
+    """Render a single 5-hour/weekly bar with a truthful label.
+
+    ``bar`` is a QProgressBar that already lives in the tool card.
+    ``kind`` is "primary" or "secondary".  ``rate`` is the latest
+    :class:`RateLimitSnapshot` (or None).
+
+    The function never invents a value: when Codex returns no
+    quota data (third-party model such as MiniMax-M3) we show a
+    neutral muted "no data" state and a small helper text that
+    explains why, so the user immediately understands the
+    difference between "0% used" and "Codex did not report".
+    """
+    label = _NO_DATA_LABELS.get(kind, kind)
+    obj_default = "ratePrimary" if kind == "primary" else "rateSecondary"
+
+    # --- case A: third-party model, Codex returned null block -------
+    # (also covers the rate=None case before Codex sends anything).
+    if rate is None or _third_party_model_active(rate):
+        bar.setRange(0, 100)
+        bar.setValue(0)
+        who = f"{model_name} " if model_name else ""
+        bar.setFormat(
+            f"{label} · 无 Codex 额度"
+        )
+        bar.setObjectName("rateUnknown")
+        bar.setToolTip(
+            f"{who}不计 Codex 5小时 / 周额度限制\n"
+            f"请到 {model_name or "上游模型"} 官方控制台查看用量"
+        )
+        bar.style().unpolish(bar)
+        bar.style().polish(bar)
+        return
+
+    # --- case B: hit a hard rate-limit -------------------------------
+    reached = getattr(rate, "rate_limit_reached_type", None) or ""
+    if (
+        (kind == "primary" and reached in ("primary", "both"))
+        or (kind == "secondary" and reached in ("secondary", "both"))
+    ):
+        bar.setRange(0, 100)
+        bar.setValue(100)
+        bar.setFormat(
+            f"{label} · {_REACHED_LABELS.get(reached, "已用完")}"
+        )
+        bar.setObjectName("danger")
+        bar.setToolTip("Codex 报告该额度已用完,等待重置窗口刷新。")
+        bar.style().unpolish(bar)
+        bar.style().polish(bar)
+        return
+
+    # --- case C: normal percentage ------------------------------------
+    pct = (
+        rate.primary_used_percent
+        if kind == "primary"
+        else rate.secondary_used_percent
+    )
+    reset = (
+        rate.primary_resets_at
+        if kind == "primary"
+        else rate.secondary_resets_at
+    )
+    if pct is None:
+        # No data and no explicit "reached" tag either.  Could be
+        # the user just started a new session before Codex has
+        # reported a snapshot.  Show a neutral state.
+        bar.setRange(0, 100)
+        bar.setValue(0)
+        bar.setFormat(f"{label} · 等待 Codex 发送数据")
+        bar.setObjectName("rateUnknown")
+        bar.setToolTip("Codex 尚未发送本窗口的额度数据")
+        bar.style().unpolish(bar)
+        bar.style().polish(bar)
+        return
+
+    bar.setRange(0, 100)
+    bar.setValue(int(pct))
+    eta = _format_eta(reset)
+    bar.setFormat(f"{label} · {pct:.0f}%  ·  重置 {eta}")
+    if pct >= 90:
+        bar.setObjectName("danger")
+    elif pct >= 70:
+        bar.setObjectName("warning")
+    else:
+        bar.setObjectName(obj_default)
+    plan = getattr(rate, "plan_type", None)
+    if plan:
+        bar.setToolTip(f"Codex 套餐: {plan}")
+    bar.style().unpolish(bar)
+    bar.style().polish(bar)
+
 
 # ---------------------------------------------------------------- KPI card
 class _Card(QFrame):
@@ -623,33 +758,17 @@ class Dashboard(QWidget):
 
         if rate is not None and rate.tool in self._tool_cards:
             card = self._tool_cards[rate.tool]
-            primary = rate.primary_used_percent or 0
-            secondary = rate.secondary_used_percent or 0
-            card["rate_primary"].setValue(int(primary))
-            card["rate_primary"].setFormat(
-                f"5小时 {primary:.0f}%  ·  重置 {_format_eta(rate.primary_resets_at)}"
-            )
-            if primary >= 90:
-                card["rate_primary"].setObjectName("danger")
-            elif primary >= 70:
-                card["rate_primary"].setObjectName("warning")
-            else:
-                card["rate_primary"].setObjectName("ratePrimary")
-            card["rate_primary"].style().unpolish(card["rate_primary"])
-            card["rate_primary"].style().polish(card["rate_primary"])
-
-            card["rate_secondary"].setValue(int(secondary))
-            card["rate_secondary"].setFormat(
-                f"周 {secondary:.0f}%  ·  重置 {_format_eta(rate.secondary_resets_at)}"
-            )
-            if secondary >= 90:
-                card["rate_secondary"].setObjectName("danger")
-            elif secondary >= 70:
-                card["rate_secondary"].setObjectName("warning")
-            else:
-                card["rate_secondary"].setObjectName("rateSecondary")
-            card["rate_secondary"].style().unpolish(card["rate_secondary"])
-            card["rate_secondary"].style().polish(card["rate_secondary"])
+            # Detect the third-party model name from the most recent
+            # snapshot so the "no Codex quota" tooltip is accurate.
+            model_name = ""
+            try:
+                rec = self._controller.storage().recent_records(limit=1)
+                if rec:
+                    model_name = rec[0].model or ""
+            except Exception:
+                model_name = ""
+            _render_rate_card(card["rate_primary"], "primary", rate, model_name)
+            _render_rate_card(card["rate_secondary"], "secondary", rate, model_name)
 
         try:
             model_totals = {

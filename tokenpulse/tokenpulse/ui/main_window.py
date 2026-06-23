@@ -51,7 +51,7 @@ class MainWindow(QMainWindow):
         # Floating mini monitor (top-right, Vercel/Geist style).
         # It is shown when the main window is hidden / minimised, and
         # hidden when the main window is shown.
-        self._mini_monitor = MiniMonitorWidget(controller, self)
+        self._mini_monitor = MiniMonitorWidget(controller)
         self._mini_monitor.expand_requested.connect(self._expand_from_monitor)
         self._mini_monitor.quit_requested.connect(self._quit_app)
 

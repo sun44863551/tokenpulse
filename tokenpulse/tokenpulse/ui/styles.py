@@ -167,6 +167,17 @@ QProgressBar#danger::chunk {
     background-color: __DANGER__;
 }
 
+/* "rateUnknown" is shown when Codex returned no quota data,
+   e.g. when the user is on a third-party model like MiniMax-M3. */
+QProgressBar#rateUnknown {
+    background-color: #EDEBE9;
+    color: __TEXT_SECONDARY__;
+}
+QProgressBar#rateUnknown::chunk {
+    background-color: #C8C6C4;
+    border-radius: 5px;
+}
+
 QPushButton {
     background-color: __CARD__;
     color: __TEXT__;

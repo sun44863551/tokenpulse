@@ -359,8 +359,46 @@ class MiniMonitorWidget(QWidget):
         self.trend_label.setVisible(True)
 
     def _update_status_dot(self, rate) -> None:
-        primary = (rate.primary_used_percent or 0) if rate is not None else 0
-        secondary = (rate.secondary_used_percent or 0) if rate is not None else 0
+        """Pick a status dot colour and tooltip that match the
+        Codex state.  Mirrors the dashboard's `_render_rate_card`
+        so a MiniMax-M3 user never sees a misleading "low" dot.
+        """
+        # --- case A: no data at all (rate is None, or the snapshot
+        # has no quota information because the active model is
+        # provided by a third party such as MiniMax-M3).
+        if rate is None or not getattr(rate, "has_quota_data", False):
+            self.status_dot.setStyleSheet(
+                "color: %s; font-size: 12px; font-weight: 800;"
+                " background: transparent;" % _G_MUTED
+            )
+            if rate is None:
+                self.status_dot.setToolTip("等待 Codex 发送频率数据")
+            else:
+                self.status_dot.setToolTip(
+                    "当前模型不计入 Codex 5小时/周额度限制"
+                )
+            return
+
+        # --- case B: hard rate-limit hit (Codex says we are out) ----
+        reached = getattr(rate, "rate_limit_reached_type", None) or ""
+        if reached in ("primary", "secondary", "both", "credit"):
+            self.status_dot.setStyleSheet(
+                "color: %s; font-size: 12px; font-weight: 800;"
+                " background: transparent;" % _G_ERROR
+            )
+            self.status_dot.setToolTip(
+                {
+                    "primary": "5小时额度已用完",
+                    "secondary": "周额度已用完",
+                    "both": "5小时 + 周额度均已用完",
+                    "credit": "Credits 已用完",
+                }.get(reached, "频率限制已触发")
+            )
+            return
+
+        # --- case C: normal percentage -------------------------------
+        primary = rate.primary_used_percent or 0
+        secondary = rate.secondary_used_percent or 0
         if primary >= 90 or secondary >= 90:
             color, tip = _G_ERROR, "用量接近上限"
         elif primary >= 70 or secondary >= 70:

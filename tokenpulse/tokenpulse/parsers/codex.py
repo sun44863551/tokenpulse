@@ -113,11 +113,26 @@ class CodexParser(BaseParser):
         rate = payload.get("rate_limits") or {}
         primary = rate.get("primary") or {}
         secondary = rate.get("secondary") or {}
+        credits = rate.get("credits") or {}
+        # --- new Codex rate_limit fields (Codex CLI >= 0.20) --------
+        # When the active model is provided by a third party (e.g.
+        # MiniMax-M3) the entire block can be null.  We still persist
+        # everything Codex sends so the UI can show an accurate
+        # "no data" state and respect rate_limit_reached_type.
         record.plan_type = rate.get("plan_type")
+        record.limit_id = rate.get("limit_id")
+        record.limit_name = rate.get("limit_name")
         record.primary_used_percent = primary.get("used_percent")
         record.primary_resets_at = self._coerce_ts(primary.get("resets_at"), context)
         record.secondary_used_percent = secondary.get("used_percent")
         record.secondary_resets_at = self._coerce_ts(secondary.get("resets_at"), context)
+        record.credits_has_credits = credits.get("has_credits")
+        record.credits_unlimited = credits.get("unlimited")
+        record.credits_balance = (
+            str(credits.get("balance")) if credits.get("balance") is not None else None
+        )
+        record.individual_limit = rate.get("individual_limit")
+        record.rate_limit_reached_type = rate.get("rate_limit_reached_type")
         if record.plan_type:
             context.current_plan_type = record.plan_type
 
