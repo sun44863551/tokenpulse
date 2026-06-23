@@ -84,6 +84,7 @@ def _format_time(ts_ms: int) -> str:
 
 # ---------------------------------------------------------------- KPI card
 class _Card(QFrame):
+    """Traditional PC-Manager style card. Used for non-KPI sections."""
     def __init__(self, title: str, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.setObjectName("card")
@@ -100,6 +101,75 @@ class _Card(QFrame):
         layout.addWidget(self.title_label)
         layout.addWidget(self.value_label)
         layout.addWidget(self.sub_label)
+
+
+class _StatCard(QFrame):
+    """v0.dev-inspired stat card with title, big value, trend pill, and sub-text.
+
+    Layout:
+        ┐───────────────────────────┘
+        |  title                            trend  |
+        |  1.2k                                 |
+        |  sub-text                              |
+        └───────────────────────────┘
+    Trend can be '↑ +12%', '↓ -8%', or '± 0%' (flat).
+    """
+    def __init__(self, title: str, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.setObjectName("statCard")
+        self.setCursor(Qt.PointingHandCursor)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(14, 12, 14, 12)
+        outer.setSpacing(2)
+        # row: title + trend pill
+        title_row = QHBoxLayout()
+        title_row.setSpacing(6)
+        title_row.setContentsMargins(0, 0, 0, 0)
+        self.title_label = QLabel(title)
+        self.title_label.setObjectName("statTitle")
+        title_row.addWidget(self.title_label, 1)
+        self.trend_label = QLabel("")
+        self.trend_label.setObjectName("trendFlat")
+        self.trend_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.trend_label.setVisible(False)
+        title_row.addWidget(self.trend_label, 0)
+        outer.addLayout(title_row)
+        # value
+        self.value_label = QLabel("—")
+        self.value_label.setObjectName("statValue")
+        outer.addWidget(self.value_label)
+        # sub
+        self.sub_label = QLabel("")
+        self.sub_label.setObjectName("statSub")
+        self.sub_label.setWordWrap(True)
+        outer.addWidget(self.sub_label)
+
+    def set_value(self, text: str) -> None:
+        self.value_label.setText(text)
+
+    def set_sub(self, text: str) -> None:
+        self.sub_label.setText(text)
+
+    def set_trend(self, delta_pct: Optional[float]) -> None:
+        """delta_pct: positive = up (green), negative = down (red),
+        None or 0 = flat (gray)."""
+        if delta_pct is None or abs(delta_pct) < 0.5:
+            self.trend_label.setVisible(False)
+            return
+        self.trend_label.setVisible(True)
+        if delta_pct > 0:
+            arrow = "↑"
+            self.trend_label.setObjectName("trendUp")
+            color = "#107C10"
+        else:
+            arrow = "↓"
+            self.trend_label.setObjectName("trendDown")
+            color = "#D13438"
+        self.trend_label.setText(f"{arrow} {abs(delta_pct):.1f}%")
+        # re-polish
+        self.trend_label.style().unpolish(self.trend_label)
+        self.trend_label.style().polish(self.trend_label)
+        self.trend_label.setStyleSheet(f"color: {color}; font-size: 11px; font-weight: 600; background: transparent;")
 
 
 # ---------------------------------------------------------------- dashboard
@@ -170,16 +240,12 @@ class Dashboard(QWidget):
     # -------------------------------------------------------- widget factory
     def _build_widgets(self) -> None:
         """Create all card instances for the layout to consume."""
-        # 4 small stat tiles
-        self.cost_card = _Card("预估费用")
-        self.cost_card.value_label.setStyleSheet("font-size: 22px; font-weight: 600;")
-        self.interactions_card = _Card("交互次数")
-        self.interactions_card.value_label.setStyleSheet("font-size: 22px; font-weight: 600;")
-        self.interactions_card.sub_label.setText("本机会话日志统计")
-        self.cache_card = _Card("缓存命中率")
-        self.cache_card.value_label.setStyleSheet("font-size: 22px; font-weight: 600;")
-        self.avg_card = _Card("平均输入")
-        self.avg_card.value_label.setStyleSheet("font-size: 22px; font-weight: 600;")
+        # 4 small stat tiles (v0-style with trend indicator)
+        self.cost_card = _StatCard("预估费用")
+        self.interactions_card = _StatCard("交互次数")
+        self.interactions_card.set_sub("本机会话日志统计")
+        self.cache_card = _StatCard("缓存命中率")
+        self.avg_card = _StatCard("平均输入")
 
         # tips list (lazy fill in _render_tips)
         self.tips_list = QVBoxLayout()
@@ -359,8 +425,10 @@ class Dashboard(QWidget):
         tips_scroll = QScrollArea()
         tips_scroll.setWidgetResizable(True)
         tips_scroll.setFrameShape(QFrame.NoFrame)
-        tips_scroll.setMaximumHeight(60)
+        tips_scroll.setMaximumHeight(110)
         tips_container = QWidget()
+        tips_container.setAttribute(Qt.WA_TranslucentBackground)
+        tips_container.setStyleSheet('background: transparent;')
         tips_container.setLayout(self.tips_list)
         tips_scroll.setWidget(tips_container)
         tips_layout.addWidget(tips_scroll, 1)
@@ -474,6 +542,24 @@ class Dashboard(QWidget):
             "label": source.label,
         }
 
+
+    def _compute_trend(self, key: str, current: float) -> "Optional[float]":
+        """Return a % delta vs the previous sample for the given key.
+
+        Maintains a small dict ``_trend_prev`` in instance state. The first
+        sample establishes a baseline and returns None (no pill shown).
+        Subsequent samples return the percentage change.
+        """
+        prev_map = getattr(self, "_trend_prev", None)
+        if prev_map is None:
+            prev_map = {}
+            self._trend_prev = prev_map
+        prev = prev_map.get(key)
+        prev_map[key] = current
+        if prev is None or prev == 0:
+            return None
+        return (current - prev) / prev * 100.0
+
     def _render_totals(self, totals: Totals, by_tool: dict, rate) -> None:
         try:
             self._hero_value.setText(_humanize(totals.total_tokens))
@@ -487,12 +573,17 @@ class Dashboard(QWidget):
             self._hero_sub.setText("  ·  ".join(sub_parts))
             self.cost_card.value_label.setText(_format_money(totals.cost))
             self.cost_card.sub_label.setText("按公开定价计算，缓存读取已折扣")
+            # 同比昨日趋势:实际接入历史数据时替换为真实计算。
+            self.cost_card.set_trend(self._compute_trend("cost", totals.cost))
             self.interactions_card.value_label.setText(str(totals.interactions))
             plan_text = (
                 "订阅套餐 \"" + (self._plan_type or "plus") + "\" "
                 + ("按用户轮次计费" if self._interaction_plan else "不受计次限制")
             )
             self.interactions_card.sub_label.setText(plan_text)
+            self.interactions_card.set_trend(
+                self._compute_trend("interactions", float(totals.interactions))
+            )
             try:
                 stats = self._controller.storage().usage_stats()
                 if stats.cache_hit_rate is not None:
@@ -501,8 +592,15 @@ class Dashboard(QWidget):
                     "读 " + _humanize(stats.total_cache_read)
                     + " / 输入 " + _humanize(stats.total_input)
                 )
+                if stats.cache_hit_rate is not None:
+                    self.cache_card.set_trend(
+                        self._compute_trend("cache_hit_rate", stats.cache_hit_rate * 100)
+                    )
                 self.avg_card.value_label.setText(_humanize(int(stats.avg_input_tokens)))
                 self.avg_card.sub_label.setText("平均每次输入 token")
+                self.avg_card.set_trend(
+                    self._compute_trend("avg_input_tokens", float(stats.avg_input_tokens))
+                )
             except Exception:
                 pass
         except Exception:

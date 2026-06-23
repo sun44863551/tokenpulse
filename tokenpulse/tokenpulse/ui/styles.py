@@ -18,75 +18,75 @@ COLOR_SUCCESS = "#107C10"
 COLOR_WARNING = "#FF8C00"
 COLOR_DANGER = "#D13438"
 
-QSS = """
+# Style template using placeholder substitution to avoid triple-quote collisions
+_QSS_TEMPLATE = """
 * {
     font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", "PingFang SC", sans-serif;
-    color: """ + COLOR_TEXT + """;
+    color: __TEXT__;
 }
 
 QMainWindow,
 QWidget#root {
-    background-color: """ + COLOR_BG + """;
+    background-color: __BG__;
 }
 
 QLabel#titleLabel {
     font-size: 24px;
     font-weight: 600;
-    color: """ + COLOR_TEXT + """;
+    color: __TEXT__;
 }
 
 QLabel#subtitleLabel {
     font-size: 13px;
-    color: """ + COLOR_TEXT_SECONDARY + """;
+    color: __TEXT_SECONDARY__;
     margin-top: 2px;
 }
 
 QLabel#cardTitle {
     font-size: 12px;
-    color: """ + COLOR_TEXT_SECONDARY + """;
+    color: __TEXT_SECONDARY__;
     font-weight: 500;
 }
 
 QLabel#cardValue {
     font-size: 30px;
     font-weight: 600;
-    color: """ + COLOR_TEXT + """;
+    color: __TEXT__;
 }
 
 QLabel#cardSubValue {
     font-size: 12px;
-    color: """ + COLOR_TEXT_MUTED + """;
+    color: __TEXT_MUTED__;
 }
 
 QLabel#heroLabel {
     font-size: 12px;
-    color: """ + COLOR_TEXT_SECONDARY + """;
+    color: __TEXT_SECONDARY__;
     font-weight: 500;
 }
 
 QLabel#heroValue {
     font-size: 34px;
     font-weight: 700;
-    color: """ + COLOR_TEXT + """;
+    color: __TEXT__;
     line-height: 1.1;
 }
 
 QLabel#heroSub {
     font-size: 13px;
-    color: """ + COLOR_TEXT_MUTED + """;
+    color: __TEXT_MUTED__;
 }
 
-/* Cards: white with subtle shadow and rounded corners. */
 QFrame#card {
-    background-color: """ + COLOR_CARD + """;
-    border: 1px solid """ + COLOR_BORDER + """;
-    border-radius: 12px;
+    background-color: __CARD__;
+    border: 1px solid __BORDER__;
+    border-radius: 10px;
 }
 
 QFrame#heroCard {
-    background-color: """ + COLOR_CARD + """;
-    border: 1px solid """ + COLOR_BORDER + """;
-    border-radius: 14px;
+    background-color: __CARD__;
+    border: 1px solid __BORDER__;
+    border-radius: 12px;
 }
 
 QFrame#tipCard {
@@ -94,10 +94,9 @@ QFrame#tipCard {
     border: 1px solid transparent;
 }
 
-/* Status pills (small colored labels with optional leading dot). */
 QLabel#pill {
     background-color: #DEECF9;
-    color: """ + COLOR_ACCENT + """;
+    color: __ACCENT__;
     padding: 4px 10px;
     border-radius: 10px;
     font-size: 12px;
@@ -106,7 +105,7 @@ QLabel#pill {
 
 QLabel#pillSuccess {
     background-color: #DFF6DD;
-    color: """ + COLOR_SUCCESS + """;
+    color: __SUCCESS__;
     padding: 4px 10px;
     border-radius: 10px;
     font-size: 12px;
@@ -124,7 +123,7 @@ QLabel#pillWarning {
 
 QLabel#pillDanger {
     background-color: #FDE7E9;
-    color: """ + COLOR_DANGER + """;
+    color: __DANGER__;
     padding: 4px 10px;
     border-radius: 10px;
     font-size: 12px;
@@ -132,15 +131,15 @@ QLabel#pillDanger {
 }
 
 QStatusBar {
-    background-color: """ + COLOR_CARD + """;
-    color: """ + COLOR_TEXT_MUTED + """;
-    border-top: 1px solid """ + COLOR_BORDER + """;
+    background-color: __CARD__;
+    color: __TEXT_MUTED__;
+    border-top: 1px solid __BORDER__;
 }
 
 QToolTip {
-    background-color: """ + COLOR_CARD + """;
-    color: """ + COLOR_TEXT + """;
-    border: 1px solid """ + COLOR_BORDER + """;
+    background-color: __CARD__;
+    color: __TEXT__;
+    border: 1px solid __BORDER__;
     padding: 4px;
     border-radius: 4px;
 }
@@ -150,32 +149,32 @@ QProgressBar {
     border: none;
     border-radius: 5px;
     text-align: center;
-    color: """ + COLOR_TEXT + """;
+    color: __TEXT__;
     font-size: 11px;
     min-height: 12px;
 }
 
 QProgressBar::chunk {
-    background-color: """ + COLOR_ACCENT + """;
+    background-color: __ACCENT__;
     border-radius: 5px;
 }
 
 QProgressBar#warning::chunk {
-    background-color: """ + COLOR_WARNING + """;
+    background-color: __WARNING__;
 }
 
 QProgressBar#danger::chunk {
-    background-color: """ + COLOR_DANGER + """;
+    background-color: __DANGER__;
 }
 
-/* Standard secondary button. */
 QPushButton {
-    background-color: """ + COLOR_CARD + """;
-    color: """ + COLOR_TEXT + """;
-    border: 1px solid """ + COLOR_BORDER + """;
-    border-radius: 6px;
+    background-color: __CARD__;
+    color: __TEXT__;
+    border: 1px solid __BORDER__;
+    border-radius: 8px;
     padding: 7px 14px;
     font-size: 12px;
+    outline: none;
 }
 
 QPushButton:hover {
@@ -183,27 +182,31 @@ QPushButton:hover {
     border-color: #C8C6C4;
 }
 
+QPushButton:focus {
+    border: 2px solid __ACCENT__;
+    padding: 6px 13px;
+}
+
 QPushButton:pressed {
     background-color: #EDEBE9;
 }
 
-/* Primary (Microsoft blue) action button. */
 QPushButton#primaryButton {
-    background-color: """ + COLOR_ACCENT + """;
+    background-color: __ACCENT__;
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 7px 16px;
     font-size: 12px;
     font-weight: 600;
 }
 
 QPushButton#primaryButton:hover {
-    background-color: """ + COLOR_ACCENT_HOVER + """;
+    background-color: __ACCENT_HOVER__;
 }
 
 QPushButton#primaryButton:pressed {
-    background-color: """ + COLOR_ACCENT_PRESSED + """;
+    background-color: __ACCENT_PRESSED__;
 }
 
 QPushButton#primaryButton:disabled {
@@ -211,9 +214,8 @@ QPushButton#primaryButton:disabled {
     color: white;
 }
 
-/* Large hero action button (used in the new top hero section). */
 QPushButton#heroAction {
-    background-color: """ + COLOR_ACCENT + """;
+    background-color: __ACCENT__;
     color: white;
     border: none;
     border-radius: 8px;
@@ -224,17 +226,17 @@ QPushButton#heroAction {
 }
 
 QPushButton#heroAction:hover {
-    background-color: """ + COLOR_ACCENT_HOVER + """;
+    background-color: __ACCENT_HOVER__;
 }
 
 QPushButton#heroAction:pressed {
-    background-color: """ + COLOR_ACCENT_PRESSED + """;
+    background-color: __ACCENT_PRESSED__;
 }
 
 QPushButton#heroActionSecondary {
-    background-color: """ + COLOR_CARD + """;
-    color: """ + COLOR_TEXT + """;
-    border: 1px solid """ + COLOR_BORDER + """;
+    background-color: __CARD__;
+    color: __TEXT__;
+    border: 1px solid __BORDER__;
     border-radius: 8px;
     padding: 10px 18px;
     font-size: 13px;
@@ -243,20 +245,20 @@ QPushButton#heroActionSecondary {
 
 QPushButton#heroActionSecondary:hover {
     background-color: #F3F2F1;
-    border-color: """ + COLOR_ACCENT + """;
-    color: """ + COLOR_ACCENT + """;
+    border-color: __ACCENT__;
+    color: __ACCENT__;
 }
 
 QListWidget {
-    background-color: """ + COLOR_CARD + """;
-    border: 1px solid """ + COLOR_BORDER + """;
+    background-color: __CARD__;
+    border: 1px solid __BORDER__;
     border-radius: 8px;
-    color: """ + COLOR_TEXT + """;
+    color: __TEXT__;
 }
 
 QListWidget::item {
     padding: 8px 10px;
-    border-bottom: 1px solid """ + COLOR_BORDER + """;
+    border-bottom: 1px solid __BORDER__;
 }
 
 QListWidget::item:last {
@@ -265,7 +267,7 @@ QListWidget::item:last {
 
 QListWidget::item:selected {
     background-color: #DEECF9;
-    color: """ + COLOR_ACCENT + """;
+    color: __ACCENT__;
 }
 
 QScrollArea {
@@ -296,9 +298,9 @@ QScrollBar::sub-line:vertical {
 }
 
 QMenuBar {
-    background-color: """ + COLOR_CARD + """;
-    color: """ + COLOR_TEXT + """;
-    border-bottom: 1px solid """ + COLOR_BORDER + """;
+    background-color: __CARD__;
+    color: __TEXT__;
+    border-bottom: 1px solid __BORDER__;
     padding: 2px;
 }
 
@@ -312,9 +314,9 @@ QMenuBar::item:selected {
 }
 
 QMenu {
-    background-color: """ + COLOR_CARD + """;
-    color: """ + COLOR_TEXT + """;
-    border: 1px solid """ + COLOR_BORDER + """;
+    background-color: __CARD__;
+    color: __TEXT__;
+    border: 1px solid __BORDER__;
     border-radius: 6px;
     padding: 4px;
 }
@@ -326,12 +328,75 @@ QMenu::item {
 
 QMenu::item:selected {
     background-color: #DEECF9;
-    color: """ + COLOR_ACCENT + """;
+    color: __ACCENT__;
 }
 
 QMenu::separator {
     height: 1px;
-    background: """ + COLOR_BORDER + """;
+    background: __BORDER__;
     margin: 4px 6px;
 }
+
+/* === v0.dev-inspired stat card === */
+QFrame#statCard {
+    background-color: __CARD__;
+    border: 1px solid __BORDER__;
+    border-radius: 10px;
+}
+
+QFrame#statCard:hover {
+    border-color: #C8C6C4;
+}
+
+QLabel#statValue {
+    color: __TEXT__;
+    font-size: 22px;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+QLabel#statTitle {
+    color: __TEXT_SECONDARY__;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+QLabel#statSub {
+    color: __TEXT_MUTED__;
+    font-size: 11px;
+}
+
+QLabel#trendUp {
+    color: __SUCCESS__;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+QLabel#trendDown {
+    color: __DANGER__;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+QLabel#trendFlat {
+    color: __TEXT_MUTED__;
+    font-size: 11px;
+    font-weight: 600;
+}
 """
+
+QSS = (
+    _QSS_TEMPLATE
+    .replace("__BG__", COLOR_BG)
+    .replace("__CARD__", COLOR_CARD)
+    .replace("__TEXT__", COLOR_TEXT)
+    .replace("__TEXT_SECONDARY__", COLOR_TEXT_SECONDARY)
+    .replace("__TEXT_MUTED__", COLOR_TEXT_MUTED)
+    .replace("__BORDER__", COLOR_BORDER)
+    .replace("__ACCENT__", COLOR_ACCENT)
+    .replace("__ACCENT_HOVER__", COLOR_ACCENT_HOVER)
+    .replace("__ACCENT_PRESSED__", COLOR_ACCENT_PRESSED)
+    .replace("__SUCCESS__", COLOR_SUCCESS)
+    .replace("__WARNING__", COLOR_WARNING)
+    .replace("__DANGER__", COLOR_DANGER)
+)
