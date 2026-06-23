@@ -161,13 +161,29 @@ def run_gui() -> int:
     # 取消 offscreen 强制,使用原生窗口平台。
     os.environ.pop("QT_QPA_PLATFORM", None)
     app = _ensure_qt_app()
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QGuiApplication
     from tokenpulse.app import build_default_controller
     from tokenpulse.ui.main_window import MainWindow
     ctl = build_default_controller()
     _seed_demo_data(ctl.storage())
     win = MainWindow(ctl)
-    win.resize(1280, 760)
+
+    # 根据当前屏幕实际尺寸自适应,确保窗口完全填满屏幕,
+    # 避免右侧或底部被其他窗口遮挡。
+    screen = QGuiApplication.primaryScreen()
+    if screen is not None:
+        avail = screen.availableGeometry()
+        # 留 0 像素边距,完全占满;若希望有边距可改为 avail.width()-40
+        win.resize(avail.width(), avail.height())
+        win.move(avail.x(), avail.y())
+    else:
+        win.resize(1280, 760)
+
     win.show()
+    # 强制置顶并激活,避免被其他应用窗口遮挡。
+    win.raise_()
+    win.activateWindow()
     return app.exec()
 
 
