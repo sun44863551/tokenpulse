@@ -215,21 +215,50 @@ def _humanize(n) -> str:
 
 
 class ModelPieChart(QWidget):
-    """Donut/pie chart of total tokens by model (across all tools)."""
+    """Donut/pie chart of total tokens by model + side legend.
+
+    重构版: 把易重叠的扇区标签换成右侧图例, 即使 6+ 个模型
+    也能在一屏内清晰展示.  布局: [ Donut | Legend list ].
+    """
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        layout = QVBoxLayout(self)
+        from PySide6.QtWidgets import (
+            QHBoxLayout, QVBoxLayout, QScrollArea, QFrame, QLabel,
+            QSizePolicy,
+        )
+        layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        # 左侧: 饼图绘制区
         self.view = pg.GraphicsView()
         self.view.setBackground("#FFFFFF")
         self.view.setRenderHint(QPainter.Antialiasing, True)
-        layout.addWidget(self.view, stretch=1)
+        self.view.setMinimumWidth(110)
+        layout.addWidget(self.view, stretch=3)
+
+        # 右侧: 滚动图例
+        self._legend_scroll = QScrollArea()
+        self._legend_scroll.setWidgetResizable(True)
+        self._legend_scroll.setFrameShape(QFrame.NoFrame)
+        self._legend_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._legend_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self._legend_scroll.setStyleSheet("background: transparent;")
+        layout.addWidget(self._legend_scroll, stretch=4)
+
+        self._legend_host = QWidget()
+        self._legend_host.setStyleSheet("background: transparent;")
+        self._legend_layout = QVBoxLayout(self._legend_host)
+        self._legend_layout.setContentsMargins(2, 0, 2, 0)
+        self._legend_layout.setSpacing(2)
+        self._legend_layout.addStretch(1)
+        self._legend_scroll.setWidget(self._legend_host)
+
         self._items: list = []
         self._labels: list[pg.TextItem] = []
         self._data: dict = {}
         self._pending = False
-        # Re-render whenever the widget is resized so the donut stays centred.
         self.view.installEventFilter(self)
 
     def eventFilter(self, obj, event):
@@ -254,27 +283,65 @@ class ModelPieChart(QWidget):
         self._render(self._data)
 
     def set_data(self, model_totals: dict) -> None:
-        """Store the latest data; rendering happens once the view is laid out."""
         self._data = dict(model_totals)
         self._schedule_render()
 
+    def _clear_legend(self) -> None:
+        # remove all rows except the trailing stretch
+        while self._legend_layout.count() > 1:
+            item = self._legend_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+
+    def _add_legend_row(self, color: str, name: str, pct: float) -> None:
+        from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget, QSizePolicy
+        row = QWidget()
+        row.setStyleSheet("background: transparent;")
+        h = QHBoxLayout(row)
+        h.setContentsMargins(0, 1, 0, 1)
+        h.setSpacing(6)
+        swatch = QLabel()
+        swatch.setFixedSize(10, 10)
+        swatch.setStyleSheet(
+            f"background:{color}; border-radius:2px;"
+        )
+        h.addWidget(swatch, 0)
+        name_lbl = QLabel(name)
+        name_lbl.setStyleSheet(
+            "color:#1F1F1F; font-size:11px; background:transparent;"
+        )
+        name_lbl.setToolTip(name)
+        name_lbl.setMaximumWidth(110)
+        name_lbl.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        h.addWidget(name_lbl, 1)
+        pct_lbl = QLabel(f"{pct:.0f}%")
+        pct_lbl.setStyleSheet(
+            "color:#605E5C; font-size:11px; font-weight:600; background:transparent;"
+        )
+        pct_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        h.addWidget(pct_lbl, 0)
+        self._legend_layout.insertWidget(
+            self._legend_layout.count() - 1, row
+        )
+
     def _render(self, model_totals: dict) -> None:
-        # Reset scene.
+        # 清理旧的图形元素
         for it in self._items:
             self.view.removeItem(it)
         for lbl in self._labels:
             self.view.removeItem(lbl)
         self._items.clear()
         self._labels.clear()
+        self._clear_legend()
 
-        # Filter out tiny slices; combine into "Other".
+        # 把小扇区合并为「其他」, 避免图例过长
         items = sorted(model_totals.items(), key=lambda kv: -kv[1])
         if not items:
             return
         total = sum(v for _, v in items)
         if total == 0:
             return
-        # Combine slices that are < 5%% into "Other" so the chart stays readable.
         threshold = total * 0.05
         main = [(k, v) for k, v in items if v >= threshold]
         other = sum(v for k, v in items if v < threshold)
@@ -282,60 +349,60 @@ class ModelPieChart(QWidget):
             main.append(("其他", other))
 
         import math
-        # Use the widget's own size, not the viewport rect, so the donut
-        # is always centred inside the card regardless of any view transforms.
-        w = max(self.width(), 240)
-        h = max(self.height(), 200)
+        # 用 view 自己的 viewport 尺寸, 1:1 映射
+        viewport_size = self.view.viewport().size()
+        w = max(viewport_size.width(), 110)
+        h = max(viewport_size.height(), 150)
+        radius = min(w, h) * 0.40
+        if radius < 32.0:
+            radius = 32.0
         cx, cy = w / 2, h / 2
-        # Use a smaller radius so the chart fits comfortably in narrow cards.
-        # Leave 18% of the height for labels and the centre text.
-        radius = min(w * 0.40, h * 0.36)
-        if radius < 36.0:
-            radius = 36.0
         inner = radius * 0.55
 
-        # Chinese-capable font for slice labels.
         slice_font = QFont(_CN_FONT, 9)
         slice_font.setBold(False)
 
-        start_angle = -math.pi / 2  # 12 o'clock
+        # 1. 画扇区
+        start_angle = -math.pi / 2
         for label, value in main:
             sweep = 2 * math.pi * (value / total)
             color = _color_for(label)
-            path_item = _make_donut_slice(cx, cy, radius, inner, start_angle, start_angle + sweep, color)
+            path_item = _make_donut_slice(
+                cx, cy, radius, inner,
+                start_angle, start_angle + sweep, color
+            )
             self.view.addItem(path_item)
             self._items.append(path_item)
-            mid = start_angle + sweep / 2
-            lx = cx + (radius * 1.05) * math.cos(mid)
-            ly = cy + (radius * 1.05) * math.sin(mid)
-            pct = value / total * 100
-            # Trim very long labels so the chart stays compact.
-            short = label if len(label) <= 14 else label[:12] + "..."
-            text = "%s\n%.0f%%" % (short, pct)
-            t = pg.TextItem(text=text, color="#1F1F1F", anchor=(0.5, 0.5))
-            t.setFont(slice_font)
-            t.setPos(lx, ly)
-            self.view.addItem(t)
-            self._labels.append(t)
             start_angle += sweep
 
-        # Center label: total.
+        # 2. 中心: 总数 + 副标题
         total_text = pg.TextItem(
-            text=_humanize(total),
-            color="#1F1F1F", anchor=(0.5, 0.5),
+            text=_humanize(total), color="#1F1F1F", anchor=(0.5, 0.5),
         )
-        f = QFont(_CN_FONT, 11)
+        f = QFont(_CN_FONT, 12)
         f.setBold(True)
         total_text.setFont(f)
-        total_text.setPos(cx, cy - 6)
+        total_text.setPos(cx, cy - 4)
         self.view.addItem(total_text)
         self._labels.append(total_text)
 
-        # Match the scene rect to the widget size so the donut is fully visible
-        # without any view scaling.  1:1 mapping between scene and viewport.
+        sub_text = pg.TextItem(
+            text="总 Token", color="#8A8A8E", anchor=(0.5, 0.5),
+        )
+        sf = QFont(_CN_FONT, 8)
+        sub_text.setFont(sf)
+        sub_text.setPos(cx, cy + 12)
+        self.view.addItem(sub_text)
+        self._labels.append(sub_text)
+
+        # 3. 右侧图例
+        for label, value in main:
+            pct = value / total * 100
+            self._add_legend_row(_color_for(label), label, pct)
+
+        # 4. SceneRect 1:1 同步
         self.view.setSceneRect(0, 0, w, h)
         self.view.resetTransform()
-
 
 def _make_donut_slice(cx, cy, r_outer, r_inner, a0, a1, color):
     """Build a QGraphicsPathItem that draws a donut slice between angles a0..a1."""
@@ -361,6 +428,7 @@ def _make_donut_slice(cx, cy, r_outer, r_inner, a0, a1, color):
     item.setBrush(QBrush(QColor(color)))
     item.setPen(QPen(QColor("#FFFFFF"), 1))
     return item
+
 
 
 class DailyHeatmap(QWidget):
