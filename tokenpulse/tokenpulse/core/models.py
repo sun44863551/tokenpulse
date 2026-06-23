@@ -106,6 +106,7 @@ class OptimizationTip:
     title: str     # one-line summary, Chinese
     detail: str    # 1-2 sentence explanation, Chinese
     saving: str = ""  # estimated saving ("~¥X/turn", "~30%位")
+    saving_pct: float = 0.0  # estimated token savings ratio, 0-1 (0.3 = 30%)
 
     def rank(self) -> int:
         return _TIP_RANK.get(self.severity, 0)

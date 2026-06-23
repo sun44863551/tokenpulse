@@ -68,6 +68,7 @@ def _rule_low_cache_hit(s: UsageStats) -> List[OptimizationTip]:
             title="缓存命中率较低",
             detail="当前仅 %.0f%% 的输入是从缓存读取的，可以把稳定的 system prompt 左右提取出来作为缓存前缀，预计能节省 30%%-50%% 的输入费用。" % (rate * 100),
             saving="~节省 30% 输入",
+            saving_pct=0.30,
         )]
     if rate < 0.40:
         return [OptimizationTip(
@@ -76,6 +77,7 @@ def _rule_low_cache_hit(s: UsageStats) -> List[OptimizationTip]:
             title="缓存利用率有提升空间",
             detail="缓存读取占比 %.0f%%，如果会话中存在长且重复的上下文，可以尝试调整结构以提高缓存命中。" % (rate * 100),
             saving="~10% 位",
+            saving_pct=0.10,
         )]
     return []
 
@@ -103,6 +105,7 @@ def _rule_expensive_model_share(s: UsageStats) -> List[OptimizationTip]:
             title="高价模型占比过高",
             detail="%.0f%% 的计费 token 来自高价模型，如果部分任务仅为代码检查、文本汇总等场景，可以切到 mini 型号，预计可节省 80% 以上费用。" % (share * 100),
             saving="~节省 80% 费用",
+            saving_pct=0.80,
         )]
     return []
 
@@ -117,6 +120,7 @@ def _rule_oversized_prompts(s: UsageStats) -> List[OptimizationTip]:
             title="平均输入偏高",
             detail="平均每次请求的输入达 %.1fK tokens，这上限可能会拖慢响应且推高费用。建议拆分任务、减少输入中的不必要上下文，或者使用期望仅供参考的外部文档。" % (s.avg_input_tokens / 1000),
             saving="~40% 位",
+            saving_pct=0.40,
         )]
     if s.avg_input_tokens > 15_000:
         return [OptimizationTip(
@@ -125,6 +129,7 @@ def _rule_oversized_prompts(s: UsageStats) -> List[OptimizationTip]:
             title="输入轻微偏多",
             detail="平均输入 %.1fK tokens，如果中有大量重复上下文可以考虑汇总到 system prompt 缓存。" % (s.avg_input_tokens / 1000),
             saving="~20% 位",
+            saving_pct=0.20,
         )]
     return []
 
@@ -138,6 +143,7 @@ def _rule_oversized_single_request(s: UsageStats) -> List[OptimizationTip]:
         title="存在单次超大请求",
         detail="最大一次请求达 %.0fK tokens (%s)，这个任务可能可以拆分成多次调用。超长上下文不仅明显推高费用，还会使模型聊上下文失去重点。" % (s.max_request_tokens / 1000, s.max_request_model or "未知模型"),
         saving="~50% 位",
+        saving_pct=0.50,
     )]
 
 
@@ -155,6 +161,7 @@ def _rule_high_input_output_ratio(s: UsageStats) -> List[OptimizationTip]:
             title="输入/输出比例夸大",
             detail="输入占计费总额 %.0f%%，输出仅 %.0f%%，这意味着上下文很长但产出较少。如果是查询代码库，可以考虑先用 grep / ripgrep 在本地筛选，只把匹配到的上下文送给模型。" % (rate * 100, 100 - rate * 100),
             saving="~30% 位",
+            saving_pct=0.30,
         )]
     return []
 
@@ -172,6 +179,7 @@ def _rule_low_thinking_ratio(s: UsageStats) -> List[OptimizationTip]:
             title="思考消耗偏高",
             detail="“思考”占计费总额 %.0f%%。如果任务不需要深度推理（如简单代码完型、代码格式化），可以关闭 reasoning 或选择轻量级模型。" % (rate * 100),
             saving="~25% 位",
+            saving_pct=0.25,
         )]
     return []
 
