@@ -22,6 +22,7 @@ from .dashboard import Dashboard
 from .styles import QSS
 from .tray import TrayIcon
 from .warm_dashboard import OverviewWindow
+from .mini_monitor import MiniMonitorWidget
 
 
 class MainWindow(QMainWindow):
@@ -46,6 +47,13 @@ class MainWindow(QMainWindow):
             self._tray = TrayIcon(controller, self)
             self._tray.show_window_requested.connect(self._show_from_tray)
             self._tray.show()
+
+        # Floating mini monitor (top-right, Vercel/Geist style).
+        # It is shown when the main window is hidden / minimised, and
+        # hidden when the main window is shown.
+        self._mini_monitor = MiniMonitorWidget(controller, self)
+        self._mini_monitor.expand_requested.connect(self._expand_from_monitor)
+        self._mini_monitor.quit_requested.connect(self._quit_app)
 
     # ------------------------------------------------------------- UI build
     def _build_menu(self) -> None:
@@ -111,10 +119,14 @@ class MainWindow(QMainWindow):
 
     # --------------------------------------------------------------- close
     def closeEvent(self, event) -> None:
-        """If a tray is available, hide instead of quitting on close."""
+        """If a tray is available, hide instead of quitting on close.
+
+        Also pops up the v0-style floating mini monitor in the top-right
+        of the screen so the user can keep an eye on usage.
+        """
         if self._tray is not None and self._tray.isVisible():
             event.ignore()
-            self.hide()
+            self.hide()  # this will trigger hideEvent -> mini monitor
             self._tray.showMessage(
                 "TokenPulse",
                 "程序仍在后台运行，右键托盘选“退出”",
@@ -124,11 +136,58 @@ class MainWindow(QMainWindow):
             return
         super().closeEvent(event)
 
+    def changeEvent(self, event) -> None:
+        """Show the mini monitor when the main window is minimised."""
+        if event.type() == event.Type.WindowStateChange:
+            if self.isMinimized():
+                # Minimised -> hide full window, show mini monitor.
+                self.hide()
+        super().changeEvent(event)
+
+    def hideEvent(self, event) -> None:
+        """When the main window is hidden, show the floating mini monitor."""
+        super().hideEvent(event)
+        if self._mini_monitor is not None and not self._mini_monitor.isVisible():
+            self._mini_monitor.move_to_top_right()
+            self._mini_monitor.show()
+            self._mini_monitor.raise_()
+
+    def showEvent(self, event) -> None:
+        """When the main window is shown, hide the floating mini monitor."""
+        super().showEvent(event)
+        if self._mini_monitor is not None and self._mini_monitor.isVisible():
+            self._mini_monitor.hide()
+
     @Slot()
     def _show_from_tray(self) -> None:
-        self.show()
+        self._restore_main_window()
+
+    @Slot()
+    def _expand_from_monitor(self) -> None:
+        """User clicked the floating mini monitor; show the main window."""
+        self._restore_main_window()
+
+    def _restore_main_window(self) -> None:
+        if self._mini_monitor is not None and self._mini_monitor.isVisible():
+            self._mini_monitor.hide()
+        self.showNormal()
         self.raise_()
         self.activateWindow()
+
+    def _show_mini_monitor(self) -> None:
+        if self._mini_monitor is None:
+            return
+        self._mini_monitor.move_to_top_right()
+        self._mini_monitor.show()
+        self._mini_monitor.raise_()
+
+    @Slot()
+    def _quit_app(self) -> None:
+        """Quit the application, both the main window and the monitor."""
+        from PySide6.QtWidgets import QApplication
+        if self._mini_monitor is not None:
+            self._mini_monitor.hide()
+        QApplication.instance().quit()
 
     def _show_overview(self) -> None:
         """打开紧凑概览窗口。如果已开过则置前。"""
