@@ -146,10 +146,8 @@ class Dashboard(QWidget):
         self._tool_cards: dict = {}
 
         # --- charts
-        self.chart = TimeSeriesChart()
-        self.chart.setMinimumHeight(180)
         self.pie = ModelPieChart()
-        self.pie.setMinimumHeight(180)
+        self.pie.setMinimumHeight(0)
 
         # --- recent activity
         self.recent = QListWidget()
@@ -213,8 +211,8 @@ class Dashboard(QWidget):
         scroll.setWidget(content)
 
         inner = QVBoxLayout(content)
-        inner.setContentsMargins(20, 18, 20, 18)
-        inner.setSpacing(14)
+        inner.setContentsMargins(18, 12, 18, 12)
+        inner.setSpacing(8)
 
         # header (title + subtitle + plan pill)
         inner.addLayout(self._build_header())
@@ -225,9 +223,6 @@ class Dashboard(QWidget):
         # 4 small stat tiles
         inner.addLayout(self._build_tiles_row())
 
-        # real-time line chart
-        inner.addWidget(self._build_chart_card())
-
         # pie + tools split
         inner.addLayout(self._build_split_row())
 
@@ -235,8 +230,6 @@ class Dashboard(QWidget):
         inner.addWidget(self._build_tips_card())
 
         # recent activity
-        inner.addWidget(self._build_recent_card())
-
         inner.addStretch(1)
 
     def _build_header(self) -> QHBoxLayout:
@@ -261,12 +254,12 @@ class Dashboard(QWidget):
     def _build_hero_card(self) -> QFrame:
         hero = QFrame()
         hero.setObjectName("heroCard")
-        hero.setMinimumHeight(180)
+        hero.setMinimumHeight(110)
         hero.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         hero_layout = QVBoxLayout(hero)
-        hero_layout.setContentsMargins(24, 16, 24, 16)
-        hero_layout.setSpacing(10)
+        hero_layout.setContentsMargins(24, 12, 24, 12)
+        hero_layout.setSpacing(6)
 
         # top row: status pill + three buttons on the right
         top_row = QHBoxLayout()
@@ -316,22 +309,26 @@ class Dashboard(QWidget):
 
     def _build_split_row(self) -> QHBoxLayout:
         split_row = QHBoxLayout()
-        split_row.setSpacing(14)
+        split_row.setSpacing(10)
 
         pie_card = QFrame()
         pie_card.setObjectName("card")
+        pie_card.setMaximumHeight(200)  # 限制高度，不被拉高
         pie_layout = QVBoxLayout(pie_card)
-        pie_layout.setContentsMargins(18, 14, 18, 14)
+        pie_layout.setContentsMargins(18, 10, 18, 10)
+        pie_layout.setSpacing(4)
         pie_title = QLabel("按模型分布")
         pie_title.setObjectName("cardTitle")
         pie_layout.addWidget(pie_title)
-        pie_layout.addWidget(self.pie)
+        pie_layout.addWidget(self.pie, 1)
         split_row.addWidget(pie_card, 2)
 
         tools_card = QFrame()
         tools_card.setObjectName("card")
+        tools_card.setMaximumHeight(200)  # 与 pie 同高
         tools_layout = QVBoxLayout(tools_card)
-        tools_layout.setContentsMargins(18, 14, 18, 14)
+        tools_layout.setContentsMargins(18, 10, 18, 10)
+        tools_layout.setSpacing(4)
         tools_title = QLabel("各工具统计")
         tools_title.setObjectName("cardTitle")
         tools_layout.addWidget(tools_title)
@@ -343,8 +340,8 @@ class Dashboard(QWidget):
         tips_card = QFrame()
         tips_card.setObjectName("card")
         tips_layout = QVBoxLayout(tips_card)
-        tips_layout.setContentsMargins(18, 14, 18, 14)
-        tips_layout.setSpacing(10)
+        tips_layout.setContentsMargins(18, 10, 18, 10)
+        tips_layout.setSpacing(4)
         title_row = QHBoxLayout()
         tips_title = QLabel("优化建议")
         tips_title.setObjectName("cardTitle")
@@ -359,31 +356,41 @@ class Dashboard(QWidget):
         self._one_click_btn.clicked.connect(self._on_one_click_optimize)
         title_row.addWidget(self._one_click_btn)
         tips_layout.addLayout(title_row)
-        tips_layout.addLayout(self.tips_list)
+        tips_scroll = QScrollArea()
+        tips_scroll.setWidgetResizable(True)
+        tips_scroll.setFrameShape(QFrame.NoFrame)
+        tips_scroll.setMaximumHeight(60)
+        tips_container = QWidget()
+        tips_container.setLayout(self.tips_list)
+        tips_scroll.setWidget(tips_container)
+        tips_layout.addWidget(tips_scroll, 1)
         return tips_card
 
     def _build_recent_card(self) -> QFrame:
         recent_card = QFrame()
         recent_card.setObjectName("card")
         recent_layout = QVBoxLayout(recent_card)
-        recent_layout.setContentsMargins(18, 14, 18, 14)
+        recent_layout.setContentsMargins(18, 8, 18, 8)
+        recent_layout.setSpacing(4)
         r_title = QLabel("最近活动")
         r_title.setObjectName("cardTitle")
         recent_layout.addWidget(r_title)
+        # 限制高度，使整个仪表盘可以一屏看到
+        self.recent.setMaximumHeight(70)
+        self.recent.setUniformItemSizes(True)
         recent_layout.addWidget(self.recent)
         return recent_card
 
     # ------------------------------------------------------------------ slots
     @Slot(object)
     def _on_new_usage(self, record) -> None:
-        self.chart.add_point(record.tool, record.ts, record.total_tokens)
         item_text = (
             f"{_format_time(record.ts)}  ·  {record.tool}  ·  "
             f"{record.model or '—'}  ·  {_humanize(record.total_tokens)} tokens"
         )
         li = QListWidgetItem(item_text)
         self.recent.insertItem(0, li)
-        if self.recent.count() > 30:
+        if self.recent.count() > 6:
             self.recent.takeItem(self.recent.count() - 1)
 
     @Slot(object)
@@ -583,7 +590,7 @@ class Dashboard(QWidget):
             self._set_hero_pill("good")
             return
         self.tips_summary.setText(summarise(tips))
-        for tip in tips[:6]:
+        for tip in tips[:2]:
             row = self._build_tip_row(tip)
             self.tips_list.addWidget(row)
             self._tip_widgets.append(row)
