@@ -27,6 +27,11 @@ def _ensure_qt_app():
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QFont, QFontDatabase
     from PySide6.QtWidgets import QApplication
+    # 注意: setHighDpiScaleFactorRoundingPolicy 必须在 QApplication 创建之前调用,
+    # 否则会触发 Qt 警告并可能导致窗口无法正常显示。
+    QApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
     app = QApplication.instance() or QApplication(sys.argv)
     # 加载系统中文字体,保证截图里中文正常显示。
     for font_path in (
@@ -39,9 +44,6 @@ def _ensure_qt_app():
     app.setFont(QFont("Microsoft YaHei UI", 10))
     app.setApplicationName("TokenPulse")
     app.setOrganizationName("TokenPulse")
-    QApplication.setHighDpiScaleFactorRoundingPolicy(
-        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-    )
     return app
 
 
